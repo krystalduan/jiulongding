@@ -1,0 +1,378 @@
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    box-sizing: border-box;
+    font-family: 'Opens Sans Serif';
+    scroll-behavior: smooth;
+}
+
+/* 
+div {
+    width: 100vw;
+    height: 100vh;
+} */
+
+.home {
+    display: flex;
+    /* flex-direction: column; */
+    align-items: center;
+    /* justify-content:flex-start; */
+    position: relative;
+    height: 80vh; /* Full viewport height */
+    display: flex;
+    /* filter: brightness(0.7); */
+    background: url(../photos/IMG_20210306_194151.jpg);
+    background-size: cover; /* Ensures the image covers the whole section */
+    background-position: center; /* Centers the image */
+    background-repeat: no-repeat;
+    /* color: rgb(255, 255, 255); */
+    z-index: 1;
+    text-align: center;
+    padding: 1rem;
+    padding-left: 8rem;
+}
+
+.home::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(36, 33, 33, 0.7); /* White overlay with 70% opacity */
+    z-index: 2;
+}
+
+/* @import url('https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap'); */
+@font-face {
+    font-family: 'chineseFont';
+    src: url(../fonts/No.18-ShangShouJiFengShuFaTi-2.ttf);
+}
+
+.chinese {
+    font-family: 'chineseFont'; /* Font supporting Chinese characters */
+    /* font-size: rem; */
+     /* Example color */
+}
+
+.english {
+    font-family: 'Times New Roman', Serif; /* Font for English text */
+    font-size: 1.5rem;
+    color: #ffffff;
+}
+
+.content {
+    position: relative;
+    z-index: 2; /* Ensure content appears above the overlay */
+    text-align: center;
+    color: #ffffff; /* Text color for contrast */
+  }
+
+.home h1 {
+    color: #d60f0fe8;;
+    font-size: 6.5rem;
+    margin: 0.5rem 0;
+    text-align: center;
+}
+.home h2 {
+    color: #cf1616;;
+    font-size: 4rem;
+    margin: 0.5rem 0;
+    text-align: center;
+}
+
+.home h3 {
+    color: #f8f8f8e8;;
+    font-size: 3rem;
+    margin: 0.5rem 0;
+    text-align: center;
+}
+.home h4 {
+    color: #f7f1f1e8;;
+    font-size: 2rem;
+    margin: 0.5rem 0;
+    text-align: center;
+}
+
+.home p {
+    font-size: 1rem;
+    margin: 0.3rem 0;
+    line-height: 1.8;
+}
+
+.home a {
+    color: #ffffff; /* Replace with your desired color */
+    font-size: 1.5rem;
+    text-decoration: none; /* Removes the underline, optional */
+    font-weight: bold; /*Makes the text bold, optional*/
+}
+
+.home a:hover {
+    color: #a31f1f; /* Change color on hover, optional */
+    text-decoration: underline; /* Add underline on hover, optional */
+}
+
+
+/* Contact */
+
+.info-section {
+    display: flex;
+    /* border: 2px solid red; */
+    flex-wrap: wrap; /* Ensures items wrap to the next line if needed */
+    gap: 1.5rem; /* Space between columns */
+    justify-content: left; /* Center items when wrapping */
+    text-align: left;
+    padding: 2rem;
+    margin: 0 auto;
+    max-width: 70%;
+    background-color: #000000; /* Optional background color */
+    box-sizing: border-box;
+    /* color: white; */
+    
+}
+
+.info-item {
+    flex: 1 1 calc(33.333% - 1rem); /* Each column takes 1/3 of the row width */
+    /* display: flex; */
+    box-sizing: border-box;
+    text-align: center;
+    padding: 1rem;
+    padding-top: 10px;
+    align-items: center;
+    background: #971b1b; 
+    background-color: black;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Optional: Add a shadow */
+    /* border: 2px solid blue;  */
+  }
+
+
+.info-section h3 {
+    color: rgb(255, 255, 255);
+    text-align: center;
+}
+
+.info-section p {
+    color: rgb(250, 250, 250);
+    text-align: center;
+}
+
+.opening-hours {
+    width: 100%; /* Adjust as needed */
+    border-collapse: collapse;
+    /* margin: 20px 0; Add spacing around the table */
+}
+
+.opening-hours td {
+    /* padding: rem 0.2rem; Add some spacing for readability */
+    text-align: left; /* Align text to the left */
+    white-space: nowrap;
+    vertical-align: top;
+}
+
+.opening-hours td:first-child {
+    font-weight: bold; /* Highlight the day names */
+    text-align: left;  /* Align days to the left */
+    width: 100px;      /* Set fixed width for uniformity */
+}
+
+.opening-hours td:last-child {
+    text-align: right; /* Align times to the left */
+}
+
+
+/* -- .reservation */
+.reservation { 
+    min-height: 100vh;
+    background-color: #d3d1d1;
+    padding: 60px;
+}
+
+.reservation .title {
+    text-align: center;
+    color: rgb(8, 8, 8);
+    font-size: 2rem;
+    margin-bottom: 1rem;
+}
+
+.reservation .sub-title {
+    text-align: center;
+    margin-bottom: 2rem;
+    color: #0c0c0c;
+}
+
+.reservation-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1em;
+    color: black;
+}
+
+.form-row {
+    display: flex;
+    width: 100%;
+    gap: 1em;
+}
+
+.form-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 1rem;
+}
+/* /* select {
+    outline: none;
+    border: 1px solid #2c2c2a;
+    background-color: transparent;
+    border-radius: 5px;
+    padding: 14px;
+    width: 100%;
+    color: #000;
+    font-size: 16px;
+    box-sizing: border-box;
+} */
+ */
+
+form .input { 
+    margin-bottom: 1rem;
+}
+select { 
+    outline: none;
+    border: 1px solid #2c2c2a;
+    
+    width: 200px;
+    max-width: 300px; /* Limit the maximum width to 300px */
+    min-width: 250px;
+    background-color: transparent;
+    display: flex;
+    align-items: center;
+    border-radius: 5px;
+    color: grey;
+    /* padding: 14px;
+    padding-right: 25px; */
+    width: 60%;
+    box-sizing: border-box;
+}
+select option:disabled {
+    color: grey;
+}
+
+input, .input-i{ 
+    outline: none;
+    border: 1px solid #2c2c2a;
+    
+    width: 200px;
+    max-width: 300px; /* Limit the maximum width to 300px */
+    min-width: 250px;
+    background-color: transparent;
+    display: flex;
+    align-items: center;
+    border-radius: 5px;
+    color: rgb(3, 3, 3);
+    /* padding: 14px;
+    padding-right: 25px; */
+    width: 60%;
+    box-sizing: border-box;
+}
+
+::placeholder {
+    color: #a19c9c;
+}
+
+select option {
+    color: black; /* Valid options have black text */
+}
+
+select:valid {
+    color: black; /* Color for valid options */
+}
+.input-i input { 
+    border: none;
+    padding-right: 0;
+}
+
+
+::-webkit-calendar-picker-indicator { 
+    cursor: pointer;
+    /* position: relative; */
+    background-color: #c0c0c0;
+    padding: 5px;
+    border-radius: 3px;
+    border-color: white;
+    align-items: center;
+}
+
+.submit-btn { 
+    background-color: #a51616;
+    border: none;
+    color: rgb(253, 250, 250);
+    padding: 15px 30px 10px 30px;
+    font-size: 12px;
+    font-family: sans-serif;
+    border-radius: 10px;
+    cursor: pointer;
+    align-items: center;
+}
+
+.btn.hover {
+    opacity: 0.5x;
+}
+
+
+
+body {
+    background: black;
+    color: white;
+}
+
+header{
+    background-color: #333;
+    color: #fff;
+    text-align: center;
+    position: absolute;
+    top: 1rem;
+    width: 100%;
+    max-width: 800px;
+    margin: 0 auto;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 1rem;
+}
+
+header h1 { 
+    font-size: 0.9rem;
+}
+
+
+.grid { 
+    display: grid;
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+} 
+
+.error-message {
+    color: red;
+    margin-bottom: 15px;
+    font-weight: bold;
+}
+/* Responsive Adjustments */
+
+@media (max-width: 768px) {
+    .info-item {
+        flex: 1 1 calc(50% - 1rem); /* Switch to 2 items per row */
+    }
+    .opening-hours td {
+        display: block; /* Stack the elements */
+        padding: 0.5rem 0; /* Adjust padding for the stacked layout */
+        text-align: left; /* Align text to the left */
+    }
+    .opening-hours tr {
+        margin-bottom: 1rem; /* Add spacing between each day */
+    }
+}
+
+@media (max-width: 480px) {
+    .info-item {
+        flex: 1 1 100%; /* Stack items in a single column */
+    }
+}

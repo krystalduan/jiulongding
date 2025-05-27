@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JLD Chongqing Hotpot</title>
+    <!-- <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}"> -->
+    <link rel="stylesheet" href="../static/css/styles.css">
+    <!-- <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            flatpickr(".datepicker", {
+                dateFormat: "Y-m-d",
+                altInput: true,
+                altFormat: "F j, Y",
+            });
+        });
+    </script> -->
+</head>
+
+<body>
+    <header>
+        <h1>JiuLongDing Hotpot Restaurant</h1>
+    </header>
+    <main>
+        <!-- Fullscreen Landing Section -->
+        <section id="home" class="home">
+            <div class="content">
+                <h1 class="chinese">九龙鼎</h1>
+                <h2 class="chinese">重庆酒家</h2>
+                <h3 class="english">JiuLongDing</h3>
+                <h4 class="english">Chinese Restaurant</h4>
+                <p>Specializing in Chongqing Hotpot and Sichuan cuisine<br></p>
+                <a href="#reservation">Book Now &darr;</a>
+            </div>
+        </section>
+
+        <section id="info-section" class="info-section">
+            <div class="info-item">
+                <h3>Location</h3>
+                <p>71 Dixon St<br>Haymarket<br>Sydney, 2000</p>
+            </div>
+            <div class="info-item">
+                <h3>Opening Hours</h3>
+                <table class="opening-hours">
+                    <tr>
+                        <td>Monday:</td>
+                        <td>12:00 PM - 11:30 PM</td>
+                    </tr>
+                    <tr>
+                        <td>Tuesday:</td>
+                        <td>5:00 PM - 11:30 PM</td>
+                    </tr>
+                    <tr>
+                        <td>Wednesday:</td>
+                        <td>5:00 PM - 11:30 PM</td>
+                    </tr>
+                    <tr>
+                        <td>Thurs-Sun:</td>
+                        <td>12:00 PM - 11:30 PM</td>
+                    </tr>
+                    <tr>
+                        <td>Friday:</td>
+                        <td>12:00 PM - 11:30 PM</td>
+                    </tr>
+                    <tr>
+                        <td>Saturday:</td>
+                        <td>12:00 PM - 11:30 PM</td>
+                    </tr>
+                    <tr>
+                        <td>Sunday:</td>
+                        <td>12:00 PM - 11:30 PM</td>
+                    </tr>
+                </table>
+            </div>
+            <div class="info-item">
+                <h3>Contact</h3>
+                <p>Email: info@hotpot.com<br>
+                    Phone: +61 423 987 048</p>
+            </div>
+
+        </section>
+        <!-- Reservation Form -->
+        <section id="reservation" class="reservation">
+            <div class="title">Reservation Enquiries</div>
+            <p class="sub-title">Book your table quickly and easily below</p>
+
+            {% if error %}
+            <div class="error-message">
+                {{ error }}
+            </div>
+            {% endif %}
+
+            <form action="/submit_reservation" method="POST" class="reservation-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="name"> 姓名 Full Name</label>
+                        <input type="text" id="name" name="name" placeholder="John Smith" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="email">邮箱 Email Address</label>
+                        <input type="email" id="email" name="email" placeholder="john.smith@gmail.com" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="phone">电话号码 Phone Number</label>
+                        <input type="tel" id="phone" name="phone" placeholder="0412345678" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="people">人位 Number of People</label>
+                        <select id="people" name="people" required>
+                            <option value="">Select party size</option>
+                            <option value="1-2">1-2</option>
+                            <option value="3-4">3-4</option>
+                            <option value="4-6">4-6</option>
+                            <option value="7-10">7-10</option>
+                            <option value="10+">10+</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="date">日期 Date</label>
+                        <input type="date" id="date" name="date" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="time">时间 Time</label>
+                        <select id="time" name="time" required>
+                            <option value="">Select time</option>
+                            <option value="12:00">12:00 PM</option>
+                            <option value="12:30">12:30 PM</option>
+                            <option value="1:00">1:00 PM</option>
+                            <option value="1:30">1:30 PM</option>
+                            <option value="6:00">6:00 PM</option>
+                            <option value="6:30">6:30 PM</option>
+                            <option value="7:00">7:00 PM</option>
+                            <option value="7:30">7:30 PM</option>
+                            <option value="8:00">8:00 PM</option>
+                            <option value="8:30">8:30 PM</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="dish-type">菜类型 Type of Dish</label>
+                        <select id="dish-type" name="dish-type" placeholder="Type of Dish" required>
+                            <option value="">Type of Dish</option>
+                            <option value="1-2">大火锅 Hotpot - Shared Pot</option>
+                            <option value="3-4">小火锅 Hotpot - Individual Pot</option>
+                            <option value="4-6">炒菜或烤鱼 Stir-Fry </option>
+
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="notes">Notes</label>
+                        <input type="text" id="notes" name="notes" placeholder="please indicate number of people" required>
+                    </div>
+                    
+                </div>
+                <button type="submit" class="submit-btn">Submit</button>
+            </form>
+        </section>
+    </main>
+</body>
+
+</html>
