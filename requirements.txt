@@ -1,0 +1,7 @@
+Flask
+python-dotenv
+APScheduler
+gspread
+oauth2client
+requests
+gunicorn
