@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 html, body {
     margin: 0;
     padding: 0;
@@ -375,4 +376,776 @@ header h1 {
     .info-item {
         flex: 1 1 100%; /* Stack items in a single column */
     }
+=======
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    box-sizing: border-box;
+    font-family: 'Opens Sans Serif';
+    scroll-behavior: smooth;
+    /* background-color: #0e0d0d; */
+    background-color: #f8f8f8;
+
+}
+
+/* Animation keyframes */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(50px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-50px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes fadeInRight {
+    from {
+        opacity: 0;
+        transform: translateX(50px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Animation classes */
+.animate-on-scroll {
+    opacity: 0;
+    transition: all 0.6s ease-out;
+}
+
+.animate-on-scroll.visible {
+    opacity: 1;
+}
+
+.fade-in-up {
+    animation: fadeInUp 0.8s ease-out forwards;
+}
+
+.fade-in-left {
+    animation: fadeInLeft 0.8s ease-out forwards;
+}
+
+.fade-in-right {
+    animation: fadeInRight 0.8s ease-out forwards;
+}
+
+.scale-in {
+    animation: scaleIn 0.8s ease-out forwards;
+}
+
+/* Staggered animations */
+.stagger-1 {
+    animation-delay: 0.1s;
+}
+
+.stagger-2 {
+    animation-delay: 0.3s;
+}
+
+.stagger-3 {
+    animation-delay: 0.5s;
+}
+
+.stagger-4 {
+    animation-delay: 0.7s;
+}
+
+/* Left-aligned horizontal navbar */
+.home-nav {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 10;
+}
+
+.home-nav ul {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    /* Makes items horizontal */
+    /* float: left; */
+}
+
+.home-nav li {
+    float: right;
+}
+
+.home-nav li a {
+    display: block;
+    color: white;
+    text-decoration: none;
+    padding: 12px 20px;
+    /* background: rgba(255, 255, 255, 0.1); */
+    /* border-right: 1px solid rgba(255, 255, 255, 0.2); */
+    transition: all 0.3s ease;
+    font-weight: 500;
+    font-size: 18px;
+    /* backdrop-filter: blur(10px); */
+}
+
+
+
+/* Hover effects */
+.home-nav li a:hover {
+    /* background: rgba(255, 255, 255, 0.2); */
+    /* transform: translateY(-2px); */
+    color: grey;
+    /* Change color on hover, optional */
+    text-decoration: underline;
+}
+
+.home {
+    position: relative;
+    height: 80vh;
+    display: flex;
+    width: 100%;
+    background: url(../photos/IMG_20210306_194151.jpg);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.home::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(36, 33, 33, 0.5);
+    z-index: 2;
+}
+
+/* @import url('https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap'); */
+@font-face {
+    font-family: 'chineseFont';
+    src: url(../fonts/No.18-ShangShouJiFengShuFaTi-2.ttf);
+}
+
+.chinese {
+    font-family: 'chineseFont';
+    /* Font supporting Chinese characters */
+}
+
+.english {
+    font-family: 'Garamond', Serif;
+    /* Font for English text */
+    font-size: 1.5rem;
+    color: #ffffff;
+}
+
+.content {
+    /* position: relative; */
+    z-index: 2;
+    /* text-align: center; */
+
+    /* color: #ffffff; Text color for contrast */
+    padding-top: 5%;
+    padding-left: 20%;
+    padding-bottom: 5%;
+    /* gap: 0rem;  */
+}
+
+.content .header-group {
+    display: flex;
+    gap: 1rem;
+    /* align-items:  center;;  */
+    /* padding-left: 60%; */
+    /* padding-top: 12vh; */
+    /* justify-content: flex-start;  */
+}
+
+.content .subheader-group {
+    display: flex;
+    flex-direction: column;
+    text-align: center;
+    align-items: center;
+    /* padding-left: 60%; */
+    /* justify-content: flex-start;  */
+    /* padding-bottom: 9rem; */
+    gap: 0rem;
+    line-height: .8;
+}
+
+.content h1 {
+    color: rgb(255, 255, 255);
+    /* font-size: 8rem; */
+    font-size: 17vh;
+    margin: 0.3rem 0;
+    padding-top: 0.1%;
+    writing-mode: vertical-rl;
+    /* or vertical-lr */
+    text-orientation: upright;
+    /* text-align: center; */
+}
+
+.content h2 {
+    color: rgb(252, 252, 252);
+    /* font-size: 5rem; */
+    font-size: 11vh;
+    margin: 1.5rem 0;
+    padding-top: 1.8rem;
+    writing-mode: vertical-rl;
+    /* or vertical-lr */
+    text-orientation: upright;
+    /* text-align: center; */
+}
+
+.content h3 {
+    color: #f7f3f3;
+    ;
+    /* font-size: 2rem; */
+    font-size: 2rem;
+    margin: 0.5rem 0;
+    text-align: center;
+    /* line-height: 1.2;  */
+}
+
+.content h4 {
+    color: #f7f1f1e8;
+    ;
+    font-size: 1.5rem;
+    /* font-size: 4vmin; */
+    margin: 0.5rem 0;
+    text-align: center;
+    /* line-height: 1.2;  */
+}
+
+.home p {
+    font-size: 1rem;
+    margin: 0.3rem 0;
+    line-height: 1.8;
+}
+
+.home a {
+    color: rgb(255, 255, 255);
+    /* Replace with your desired color */
+    font-size: 1.5rem;
+    text-decoration: none;
+    /* Removes the underline, optional */
+    font-weight: bold;
+    /*Makes the text bold, optional*/
+    line-height: 1.2;
+    gap: 2;
+}
+
+.home a:hover {
+    color: rgb(205, 105, 4);
+    /* Change color on hover, optional */
+    text-decoration: underline;
+    /* Add underline on hover, optional */
+
+
+}
+
+/* About us  */
+.about-us {
+    display: flex;
+    height: 70vh;
+    /* Full viewport height */
+    overflow: hidden;
+    /* Prevents content overflow */
+}
+
+.about-photo {
+    flex: 1.5;
+    /* Takes up half the screen */
+    background-color: #252121;
+    /* Fallback color if image doesn't load */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.about-photo img {
+    width: 80%;
+    height: 80%;
+    object-fit: cover;
+    /* Ensures the image covers the section */
+}
+
+.about-text {
+    flex: 1.2;
+    /* Takes up the other half */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 2rem;
+    /* Adds spacing around the text */
+    /* background-color: #f8f8f8; */
+    background-color: rgb(231, 223, 222);
+    /* Light background for contrast */
+    color: #333;
+    /* Dark text for readability */
+    box-shadow: -5px 0 10px rgba(0, 0, 0, 0.1);
+    /* Slight shadow for separation */
+}
+
+.about-text h2 {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    text-align: center;
+    color: #222;
+    /* Slightly darker for emphasis */
+}
+
+.about-text p {
+    font-size: 1.2rem;
+    line-height: 1.6;
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+/* Contact section */
+
+.info-section {
+    display: flex;
+    /* border: 2px solid red; */
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    /* Space between columns */
+    justify-content: left;
+    /* Center items when wrapping */
+    /* text-align: center; */
+    /* padding: 2rem; */
+    padding-top: 1rem;
+    margin: 0 auto;
+    max-width: 70%;
+    background-color: #f8f8f8;
+    /* background-color: rgb(214, 198, 197); */
+    box-sizing: border-box;
+
+
+}
+
+.info-item {
+    flex: 1 1 calc(33.333% - 1rem);
+    box-sizing: border-box;
+    text-align: center;
+    padding: 2rem;
+    padding-top: 10px;
+    align-items: center;
+    font-family: 'Times New Roman', Serif;
+    border-radius: 8px;
+    color: #0e0d0d;
+}
+
+
+.info-section h3 {
+    color: #0e0d0d;
+    font-size: 1.8rem;
+    text-align: center;
+    font-weight: bold;
+}
+
+.info-section p {
+    /* color: rgb(250, 250, 250); */
+    color: #0e0d0d;
+    font-size: 1.2rem;
+    text-align: center;
+}
+
+.info-item a {
+    color: rgb(241, 149, 74);
+    font-size: 1rem;
+    font-weight: bold;
+    line-height: 1.6;
+    text-decoration: underline;
+}
+
+.info-item a:hover {
+    color: rgb(161, 13, 13);
+    text-decoration: underline;
+}
+
+.opening-hours {
+    width: 100%;
+    padding-left: 4rem;
+    border-collapse: collapse;
+}
+
+.opening-hours td {
+    text-align: left;
+    white-space: nowrap;
+    vertical-align: top;
+}
+
+.opening-hours td:first-child {
+    font-weight: bold;
+    text-align: left;
+    width: 100px;
+}
+
+.opening-hours td:last-child {
+    text-align: right;
+}
+
+
+/* -- .reservation */
+.reservation {
+    min-height: 60vh;
+    background-color: rgb(231, 223, 222);
+    padding: 60px;
+
+}
+
+.reservation .title {
+    text-align: center;
+    color: rgb(8, 8, 8);
+    font-size: 2rem;
+    margin-bottom: 1rem;
+}
+
+.reservation .sub-title {
+    text-align: center;
+    margin-bottom: 2rem;
+    color: #0c0c0c;
+}
+
+.reservation-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    color: rgba(22, 20, 20, 0.832);
+    max-width: 800px;
+    margin: 0 auto;  
+}
+
+.form-row {
+    display: flex;
+    width: 100%;
+    gap: 1em;
+    align-items: flex-start; 
+}
+
+.form-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;   
+    margin-bottom: 2rem;
+    align-items: center;
+}
+
+.form-group label {
+    margin-bottom: 0.5rem;    
+    
+}
+
+form .input {
+    margin-bottom: 1rem;
+}
+
+select {
+    outline: none;
+    border: 1px solid #2c2c2a;
+    height: 40px;
+    max-width: 400px;
+    min-width: 200px;
+    background-color: transparent;
+    display: flex;
+    align-items: center;
+    border-radius: 5px;
+    color: grey;
+    width: 60%;
+    box-sizing: border-box;
+}
+
+select option:disabled {
+    color: grey;
+}
+
+input,
+.input-i {
+    outline: none;
+    border: 1px solid #2c2c2a;
+    height: 40px;
+    max-width: 400px;
+    min-width: 200px;
+    background-color: transparent;
+    display: flex;
+    align-items: center;
+    border-radius: 5px;
+    color: #0e0d0d;
+    ;
+    /* padding: 14px;
+    padding-right: 25px; */
+    width: 60%;
+    box-sizing: border-box;
+}
+
+::placeholder {
+    color: #a19c9c;
+}
+
+select option {
+    color: black;
+}
+
+select:valid {
+    color: black;
+}
+
+.input-i input {
+    border: none;
+    padding-right: 0;
+}
+
+
+::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    background-color: #c0c0c0;
+    padding: 5px;
+    border-radius: 3px;
+    border-color: white;
+    align-items: center;
+
+}
+
+
+.submit-btn {
+    background-color: #a10d0d;
+    border: none;
+    color: rgb(253, 250, 250);
+    font-size: 18px;
+    font-family: sans-serif;
+    border-radius: 10px;
+    cursor: pointer;
+    width: 200px;
+    height: 50px;
+    display: block;
+    transition: color 0.3s;
+    font-weight: bold;
+}
+
+.submit-btn:hover {
+    color: #ffffff;
+    font-weight: bold;
+    background-color: #630606;
+}
+
+
+body {
+    background: black;
+    color: white;
+}
+
+header {
+    background-color: #333;
+    color: #fff;
+    text-align: center;
+    position: absolute;
+    top: 1rem;
+    width: 100%;
+    max-width: 800px;
+    margin: 0 auto;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 1rem;
+}
+
+header h1 {
+    font-size: 0.9rem;
+}
+
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+.error-message {
+    color: red;
+    margin-bottom: 15px;
+    font-weight: bold;
+}
+
+.footer {
+    background-color: #222;
+    color: #f8f8f8;
+    text-align: center;
+    padding: 1rem 0;
+    margin-top: 2rem;
+    font-size: 1rem;
+}
+
+.footer-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1rem;
+}
+
+.social-links a {
+    color: #f8f8f8;
+    /* Matches text color */
+    text-decoration: none;
+    /* Removes underline */
+    margin: 0 0.5rem;
+    /* Adds space between links */
+    transition: color 0.3s;
+    /* Adds a hover effect */
+}
+
+.social-links a:hover {
+    color: #bd0202;
+    /* Highlight on hover (e.g., orange) */
+}
+
+/* reservation success*/
+.success-page {
+    position: relative;
+    min-height: 100vh;
+    /* Full viewport height */
+    display: flex;
+    width: 100%;
+    align-items: center;
+    /* Center vertically */
+    justify-content: center;
+    /* Center horizontally */
+    background: url(../photos/IMG_20210306_194151.jpg);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    padding: 20px;
+    /* Add some padding */
+    box-sizing: border-box;
+}
+
+.success-page::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(36, 33, 33, 0.5);
+    z-index: 1;
+}
+
+.success-container {
+    background: white;
+    padding: 40px;
+    border-radius: 15px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    max-width: 600px;
+    width: 100%;
+    position: relative;
+    /* Above the overlay */
+    z-index: 2;
+    color: #333;
+    /* Ensure text is readable */
+}
+
+.success-message {
+    text-align: center;
+}
+
+.success-title {
+    color: #a10d0d;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.reservation-details {
+    margin: 30px 0;
+}
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.label {
+    font-weight: bold;
+}
+
+.actions {
+    text-align: center;
+    margin-top: 30px;
+}
+
+.btn-primary,
+.btn-secondary {
+    display: inline-block;
+    padding: 12px 24px;
+    margin: 0 10px;
+    text-decoration: none;
+    border-radius: 8px;
+    font-weight: bold;
+}
+
+.btn-primary {
+    background-color: #a10d0d;
+    color: white;
+}
+
+.btn-secondary {
+    background-color: #ddd;
+    color: #333;
+}
+
+
+/* Responsive Adjustments */
+
+@media (max-width: 768px) {
+
+    /* .info-item {
+        flex: 1 1 calc(50% - 1rem); /* Switch to 2 items per row */
+    /*} */
+    /* .opening-hours td { */
+        /* display: block; */
+        /* Stack the elements */
+        /* padding: 0.5rem 0; */
+        /* Adjust padding for the stacked layout */
+        /* text-align: left; */
+        /* Align text to the left */
+    /* } */
+
+    .opening-hours tr {
+        margin-bottom: 1rem;
+        /* Add spacing between each day */
+    }
+}
+
+@media (max-width: 480px) {
+    .info-item {
+        flex: 1 1 100%;
+        /* Stack items in a single column */
+    }
+>>>>>>> c5b2f8c (initial commit)
 }

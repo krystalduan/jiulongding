@@ -1,0 +1,19 @@
+# Credentials
+jiulongding-9e2cffe41bca.json
+*.json
+
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reservation Confirmed - JiuLongDing</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+
+<body>
+    <main>
+        <section id="success-page" class="success-page">
+            <div class="success-container">
+                <h1 class="success-title"> Reservation Received ~</h1>
+                <p class="success-message">Thank you! Your reservation request has been submitted successfully.</p>
+
+                <div class="reservation-details">
+                    <h2>Reservation Details:</h2>
+                    <div class="detail-row">
+                        <span class="label">Name:</span>
+                        <span class="value">{{ name }}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Email:</span>
+                        <span class="value">{{ email }}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Phone:</span>
+                        <span class="value">{{ phone }}</span>
+                    </div>
+
+                    <div class="detail-row">
+                        <span class="label">Date:</span>
+                        <span class="value">{{ date }}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Time:</span>
+                        <span class="value">{{ time }}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Number of People:</span>
+                        <span class="value">{{ people }}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Dish Type:</span>
+                        <span class="value">{{ dish_type }}</span>
+                    </div>
+                </div>
+
+                <div class="actions">
+                    <!-- <a href="/" class="btn-primary">Make Another Reservation</a> -->
+                    <a href="/#home" class="btn-secondary">Back to Homepage</a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+</body>
+
+</html>

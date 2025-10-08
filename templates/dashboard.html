@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>JLD Reservations Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 10px;
+        }
+
+        .dashboard-container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #d32f2f, #f44336);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .date-selector {
+            padding: 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .date-input-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .date-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            font-size: 16px;
+            background: white;
+            transition: all 0.3s ease;
+        }
+
+        .date-input:focus {
+            outline: none;
+            border-color: #d32f2f;
+            box-shadow: 0 0 0 3px rgba(211, 47, 47, 0.1);
+        }
+
+        .load-btn {
+            padding: 12px 20px;
+            background: #d32f2f;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-width: 80px;
+        }
+
+        .load-btn:hover {
+            background: #b71c1c;
+            transform: translateY(-1px);
+        }
+
+        .load-btn:active {
+            transform: translateY(0);
+        }
+
+        .stats-bar {
+            display: flex;
+            justify-content: space-around;
+            padding: 15px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .stat-item {
+            text-align: center;
+            flex: 1;
+        }
+
+        .stat-number {
+            font-size: 20px;
+            font-weight: bold;
+            color: #d32f2f;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 2px;
+        }
+
+        .reservations-container {
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        .reservation-card {
+            padding: 15px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            transition: all 0.3s ease;
+        }
+
+        .reservation-card:hover {
+            background: #f8f9ff;
+        }
+
+        .reservation-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .customer-name {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            flex: 1;
+        }
+
+        .time-badge {
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .reservation-details {
+            margin: 8px 0;
+        }
+
+        .detail-row {
+            display: flex;
+            margin-bottom: 4px;
+            font-size: 14px;
+        }
+
+        .detail-label {
+            font-weight: 600;
+            color: #666;
+            width: 100px;
+            flex-shrink: 0;
+            margin-left: 10px;
+        }
+
+        .detail-value {
+            color: #333;
+            flex: 1;
+        }
+
+        .status-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+        }
+
+        .status-badge {
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-confirmed {
+            background: #e8f5e8;
+            color: #2e7d32;
+        }
+
+        .status-pending {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+
+        .status-cancelled {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .quick-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .action-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-confirm {
+            background: #4caf50;
+            color: white;
+        }
+
+        .btn-cancel {
+            background: #f44336;
+            color: white;
+        }
+
+        .btn-confirm:hover {
+            background: #45a049;
+        }
+
+        .btn-cancel:hover {
+            background: #da190b;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #d32f2f;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+
+        .empty-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+            opacity: 0.5;
+        }
+
+        .notes-section {
+            margin-top: 8px;
+            padding: 8px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #666;
+        }
+
+        /* Responsive improvements */
+        @media (max-width: 480px) {
+            body {
+                padding: 5px;
+            }
+
+            .dashboard-container {
+                border-radius: 15px;
+            }
+
+            .header h1 {
+                font-size: 20px;
+            }
+
+            .date-selector {
+                padding: 15px;
+            }
+
+            .reservation-card {
+                padding: 12px 15px;
+            }
+
+            .customer-name {
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="dashboard-container">
+        <div class="header">
+            <h1>🍲 JLD Reservations</h1>
+            <p>九龙鼎重庆火锅 Dashboard</p>
+        </div>
+
+        <div class="date-selector">
+            <div class="date-input-group">
+                <input type="date" id="dateInput" class="date-input" value="{{ default_date }}">
+                <button onclick="loadReservations()" class="load-btn">Load</button>
+            </div>
+        </div>
+
+        <div id="statsBar" class="stats-bar" style="display: flex;">
+            <div class="stat-item">
+                <div id="totalReservations" class="stat-number">0</div>
+                <div class="stat-label">Total</div>
+            </div>
+            <div class="stat-item">
+                <div id="confirmedCount" class="stat-number">0</div>
+                <div class="stat-label">Confirmed</div>
+            </div>
+            <div class="stat-item">
+                <div id="pendingCount" class="stat-number">0</div>
+                <div class="stat-label">Pending</div>
+            </div>
+            <!-- <div class="stat-item">
+                <div id="totalPeople" class="stat-number">0</div>
+                <div class="stat-label">People</div>
+            </div> -->
+        </div>
+
+        <div id="reservationsContainer" class="reservations-container">
+            <div class="loading">
+                <div class="spinner"></div>
+                Select a date and click Load to view reservations
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Load reservations for selected date
+        async function loadReservations() {
+            const dateInput = document.getElementById('dateInput');
+            const container = document.getElementById('reservationsContainer');
+            const statsBar = document.getElementById('statsBar');
+
+
+            if (!dateInput.value) {
+                alert('Please select a date');
+                return;
+            }
+
+            // Show loading
+            container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading reservations...</div>';
+            statsBar.style.display = 'none';
+
+            try {
+                // Get auth credentials from session storage
+                const auth = sessionStorage.getItem('auth');
+                const headers = {};
+                if (auth) {
+                    headers['Authorization'] = 'Basic ' + auth;
+                }
+
+                console.log('Loading reservations for:', dateInput.value);
+                console.log('Auth header:', auth ? 'present' : 'missing');
+
+                const response = await fetch(`/staff/api/reservations/${dateInput.value}`, { headers });
+                console.log('Response status:', response.status);
+
+                const data = await response.json();
+                console.log('Response data:', data);
+
+                if (data.success && data.reservations.length > 0) {
+                    displayReservations(data.reservations);
+                    updateStats(data);
+                    statsBar.style.display = 'flex';
+                } else {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-icon">📅</div>
+                            <h3>No reservations found</h3>
+                            <p>${data.message}</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">❌</div>
+                        <h3>Error loading reservations</h3>
+                        <p>Please try again</p>
+                    </div>
+                `;
+                console.error('Error:', error);
+            }
+        }
+
+        // Display reservations
+        function displayReservations(reservations) {
+            const container = document.getElementById('reservationsContainer');
+
+            container.innerHTML = reservations.map(reservation => {
+                const statusClass = reservation.confirmed.toLowerCase() === 'confirmed' || reservation.confirmed.toLowerCase() === 'yes'
+                    ? 'status-confirmed'
+                    : reservation.confirmed.toLowerCase() === 'cancelled' || reservation.confirmed.toLowerCase() === 'no'
+                        ? 'status-cancelled'
+                        : 'status-pending';
+
+                const statusText = reservation.confirmed.toLowerCase() === 'confirmed' || reservation.confirmed.toLowerCase() === 'yes'
+                    ? 'Confirmed'
+                    : reservation.confirmed.toLowerCase() === 'cancelled' || reservation.confirmed.toLowerCase() === 'no'
+                        ? 'Cancelled'
+                        : 'Pending';
+
+                return `
+                    <div class="reservation-card" 
+                        data-row="${reservation.row_number}" 
+                        data-date="${reservation.date}">
+                        <div class="reservation-header">
+                            <div class="customer-name">${reservation.name}</div>
+                            <div class="time-badge">${reservation.time}</div>
+                        </div>
+                        
+                        <div class="reservation-details">
+                            <div class="detail-row">
+                                <span class="detail-label">People:</span>
+                                <span class="detail-value">${reservation.people} people</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="detail-label">Phone:</span>
+                                <span class="detail-value">${reservation.phone}</span>
+                            </div>
+                            ${reservation.dish_type ? `
+                            <div class="detail-row">
+                                <span class="detail-label">Dish:</span>
+                                <span class="detail-value">${reservation.dish_type}</span>
+                            </div>` : ''}
+                            ${reservation.reservation_id ? `
+                            <div class="detail-row">
+                                <span class="detail-label">Customer ID:</span>
+                                <span class="detail-value">${reservation.reservation_id}</span>
+                            </div>` : ''}
+                        </div>
+
+                        ${reservation.notes ? `
+                        <div class="notes-section">
+                            <strong>Notes:</strong> ${reservation.notes}
+                        </div>` : ''}
+
+                        <div class="status-container">
+                            <span class="status-badge ${statusClass}">${statusText}</span>
+                            <div class="quick-actions">
+                                ${statusText !== 'Confirmed' ? `
+                                <button class="action-btn btn-confirm" onclick="updateStatus('${reservation.date}', ${reservation.row_number}, 'Confirmed')">
+                                    ✓ Confirm
+                                </button>` : ''}
+                                ${statusText !== 'Cancelled' ? `
+                                <button class="action-btn btn-cancel" onclick="updateStatus('${reservation.date}', ${reservation.row_number}, 'Cancelled')">
+                                    ✗ Cancel
+                                </button>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Update statistics
+        function updateStats(data) {
+            console.log('updateStats called with:', data);
+            console.log('totalPeople element exists?', document.getElementById('totalPeople') !== null);
+
+            document.getElementById('totalReservations').textContent = data.reservations.length;
+            document.getElementById('confirmedCount').textContent = data.total_confirmed;
+            document.getElementById('pendingCount').textContent = data.total_pending;
+            // document.getElementById('totalPeople').textContent = data.total_people;
+        }
+
+        // Update reservation status
+        async function updateStatus(date, rowNumber, newStatus) {
+            // STEP 1: Find the specific card and update UI immediately
+            const card = document.querySelector(`[data-row="${rowNumber}"]`);
+            if (!card) return;
+
+            const statusBadge = card.querySelector('.status-badge');
+            const quickActions = card.querySelector('.quick-actions');
+
+            // STEP 2: Update UI immediately (this is the optimistic part)
+            statusBadge.textContent = newStatus;
+            statusBadge.className = `status-badge status-${newStatus.toLowerCase()}`;
+
+            // Update buttons immediately too
+            quickActions.innerHTML = `
+                ${newStatus !== 'Confirmed' ? `
+                <button class="action-btn btn-confirm" onclick="updateStatus('${date}', ${rowNumber}, 'Confirmed')">
+                    ✓ Confirm
+                </button>` : ''}
+                ${newStatus !== 'Cancelled' ? `
+                <button class="action-btn btn-cancel" onclick="updateStatus('${date}', ${rowNumber}, 'Cancelled')">
+                    ✗ Cancel
+                </button>` : ''}
+            `;
+
+            showNotification(`Reservation ${newStatus.toLowerCase()}!`, 'success');
+
+            try {
+                // STEP 3: Same server call as before
+                const auth = sessionStorage.getItem('auth');
+                const headers = {
+                    'Content-Type': 'application/json',
+                };
+                if (auth) {
+                    headers['Authorization'] = 'Basic ' + auth;
+                }
+
+                const response = await fetch('/staff/api/update_status', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({
+                        date: date,
+                        row_number: rowNumber,
+                        status: newStatus
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    // STEP 4: Do nothing! UI already shows the right thing
+                    // ❌ Remove this line: loadReservations();
+                } else {
+                    // Only reload if there was an error
+                    loadReservations();
+                    showNotification('Error updating reservation', 'error');
+                }
+            } catch (error) {
+                console.error('Error updating status:', error);
+                loadReservations(); // Revert on error
+                showNotification('Error updating reservation', 'error');
+            }
+        }
+
+        // Show notification
+        function showNotification(message, type) {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 12px 20px;
+                border-radius: 8px;
+                color: white;
+                font-weight: 600;
+                z-index: 1000;
+                transition: all 0.3s ease;
+                ${type === 'success' ? 'background: #4caf50;' : 'background: #f44336;'}
+            `;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+
+        // Auto-load today's reservations on page load
+        document.addEventListener('DOMContentLoaded', function () {
+            // Extract auth parameter from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const authParam = urlParams.get('auth');
+
+            if (authParam) {
+                // Store auth credentials for API calls
+                const authCredentials = btoa('staff:' + authParam);
+                sessionStorage.setItem('auth', authCredentials);
+                console.log('✅ Authentication extracted from URL and stored');
+            }
+
+            // Set up authentication if password is provided by the server
+            {% if auth_password %}
+            const authCredentials = btoa('staff:{{ auth_password }}');
+            sessionStorage.setItem('auth', authCredentials);
+            console.log('✅ Authentication credentials stored from server');
+            {% endif %}
+
+            // Override fetch for all staff API calls
+            const originalFetch = window.fetch;
+            window.fetch = function (...args) {
+                let url = args[0];
+                const auth = sessionStorage.getItem('auth');
+
+                console.log('Fetch called for:', url);
+                console.log('Auth available:', auth ? 'yes' : 'no');
+
+                // Add auth header to staff API calls
+                if (auth && url.includes('/staff/api/')) {
+                    if (!args[1]) args[1] = {};
+                    if (!args[1].headers) args[1].headers = {};
+                    args[1].headers['Authorization'] = 'Basic ' + auth;
+                    console.log('✅ Added auth header to:', url);
+                }
+
+                // Alternative: add auth as URL parameter if no auth header
+                if (!auth && url.includes('/staff/api/') && authParam) {
+                    const separator = url.includes('?') ? '&' : '?';
+                    url = url + separator + 'auth=' + authParam;
+                    args[0] = url;
+                    console.log('✅ Added auth parameter to URL:', url);
+                }
+
+                return originalFetch.apply(this, args);
+            };
+
+            // Optional: Auto-load today's reservations
+            // loadReservations();
+        });
+    </script>
+</body>
+
+</html>
