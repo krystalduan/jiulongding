@@ -174,7 +174,7 @@ def clean_phone(phone):
     else:
         # Invalid format
         print(f"Warning: Invalid Australian phone format: {phone}")
-        return None
+        return phone
     return number
     
     
@@ -441,7 +441,7 @@ def submit_reservation_route():
     # Validate required fields
     if not name or not email or not phone or not people or not date or not time:
         error = "All fields are required. Please fill out the entire form."
-        print("VALIDATION FAILED - Missing fields")
+        print(f"VALIDATION FAILED - Missing fields {date}, {phone}")
         return render_template("index.html", error=error)
 
     # reservation ID
