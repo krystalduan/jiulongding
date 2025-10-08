@@ -118,8 +118,8 @@ scheduler = BackgroundScheduler()
 scheduler.add_job(
     func=send_today_confirmations_background,
     trigger="cron",
-    hour=14,
-    minute=36,
+    hour=8,
+    minute=45,
     id='daily_sms'
 )
 
@@ -148,15 +148,7 @@ def generate_reservation_id():
 
 def clean_phone(phone):
     """
-    Clean and standardize Australian phone numbers to format: 61423456789
-
-    Handles various input formats:
-    - 0412345678 -> 61412345678
-    - +61412345678 -> 61412345678
-    - 61 412 345 678 -> 61412345678
-    - (04) 1234 5678 -> 61412345678
-    - +61 4 1234 5678 -> 61412345678
-    Returns None if invalid Australian number
+    Clean and standardise Australian phone numbers to format: 61423456789
     """
     if not phone:
         return None
@@ -354,14 +346,10 @@ def send_sms_on_date(target_date, message_type="day_of"):
             if confirmed == "Pending" and phone:
 
                 sms_message = f"""Hi {name}!
-
-                        This is a reminder of your reservation tomorrow on {date} at {time} for {people} people.
-
-                        Please reply Y to confirm or N to cancel.
-
-                        Location: 71 Dixon Street (up the stairs), Haymarket
-
-                        - JLD hotpot restaurant"""
+                This is a reminder of your reservation tomorrow on {date} at {time} for {people} people.
+                Please reply Y to confirm or N to cancel.
+                Location: 71 Dixon Street (up the stairs), Haymarket
+                 - JLD hotpot restaurant"""
 
                 result = send_sms(phone, sms_message,
                                   custom_ref=f"{message_type}_{datetime.now().timestamp()}")
@@ -370,8 +358,7 @@ def send_sms_on_date(target_date, message_type="day_of"):
                 timestamp = datetime.now().strftime('%H:%M')
                 if result:
                     sent_count += 1
-                    # date_sheet.update_cell(
-                    #     i, 11, f"{message_type} SMS sent {timestamp}")
+                    
                     batch_updates.append({
                         'range': f'K{i}',
                         'values': [[f"{message_type} SMS sent {timestamp}"]]
@@ -383,8 +370,7 @@ def send_sms_on_date(target_date, message_type="day_of"):
                         'range': f'K{i}',
                         'values': [[f"{message_type} SMS failed {timestamp}"]]
                     })
-                    # date_sheet.update_cell(
-                    #     i, 10, f"{message_type} SMS failed {timestamp}")
+                   
         if batch_updates:
             date_sheet.batch_update(batch_updates)
         return f"SMS Summary for {target_date}: {sent_count} sent successfully, {failed_count} failed"
@@ -398,8 +384,8 @@ def require_staff_auth():
     auth = request.authorization
     staff_password = os.environ.get('STAFF_PASSWORD', 'jld2024')
 
-    print(f"Auth received: {auth}")  # Debug
-    print(f"Expected password: {staff_password}")  # Debug
+    print(f"Auth received: {auth}")  # debug
+    print(f"Expected password: {staff_password}")  # debug
 
     if not auth:
         print("No authorization header")
@@ -447,10 +433,9 @@ def submit_reservation_route():
         print("VALIDATION FAILED - Missing fields")
         return render_template("index.html", error=error)
 
-    # reservation ID
-    # booking received time ??
+   
     reservation_id = generate_reservation_id()
-    # Save to Master Data sheet
+    # save to master data sheet
     sheet.append_row(
         [reservation_id, name, date, time,  people, dish_type, phone, email, notes])
 
@@ -486,18 +471,13 @@ def reservation_success():
         'date': date, 'time': time, 'dish_type': dish_type, 'notes': notes, 'reservation_id': reservation_id
     }
 
-    # Send confirmation email
     email_thread = threading.Thread(
         target=send_email_async,
         args=(email, name, reservation_data)
     )
     email_thread.start()
 
-    # email_sent = send_confirmation_email(
-    #     email, name, reservation_data)
-
-    # if not email_sent:
-    #     print("Warning: Confirmation email failed to send")
+    
     return render_template('reservation_success.html',
                            name=name, email=email, phone=phone, people=people,
                            date=date, time=time, dish_type=dish_type,
@@ -535,7 +515,7 @@ def staff_login_post():
     if password == staff_password:
         # Store authentication in session
         session['staff_authenticated'] = True
-        session.permanent = True  # Optional: makes session last longer
+        session.permanent = 
         return redirect('/staff/dashboard')
     else:
         return render_template('staff_login.html', error="Invalid password"), 401
@@ -760,17 +740,6 @@ def get_reservation_date_from_sms(received_at):
             same_day = received_datetime.strftime('%Y-%m-%d')
             return same_day
 
-            # Check next day (in case they reply late to day_before message)
-            # next_day = (received_datetime + timedelta(days=1)).strftime('%d-%m-%Y')
-            # if next_day not in possible_sheets:
-            #     possible_sheets.append(next_day)
-
-            # Check previous day (in case they reply early)
-            # prev_day = (received_datetime - timedelta(days=1)).strftime('%d-%m-%Y')
-            # if prev_day not in possible_sheets:
-            #     possible_sheets.append(prev_day)
-
-            # print(f"Date candidates from received_at: {possible_sheets}")
 
         except Exception as e:
             print(f"Error parsing received_at: {e}")
@@ -828,7 +797,7 @@ def process_sms_reply_smart(phone_number, message, received_at):
                     status = f"Reply needs review: {message}"
                     method = "SMS"
                     print(f"⚠ Reply needs manual review: {message}")
-                # Batch update both columns - MUCH faster
+                # Batch update both columns 
                 date_sheet.batch_update([
                     {
                         'range': f'I{cell.row}',  # Column I: Confirmed status
