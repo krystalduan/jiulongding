@@ -212,7 +212,6 @@ RESERVATION SUMMARY
 👥 People: {reservation_details['people']} people
 🍲 Dish Type: {reservation_details.get('dish_type', 'Not specified')}
 📞 Contact: {reservation_details['phone']}
-🆔 Reservation ID: {reservation_details['reservation_id']}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 🏢 RESTAURANT LOCATION
