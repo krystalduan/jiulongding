@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JLD Chongqing Hotpot</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <!-- <link rel="stylesheet" href="../static/css/styles.css"> -->
+    <!-- <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            flatpickr(".datepicker", {
+                dateFormat: "Y-m-d",
+                altInput: true,
+                altFormat: "F j, Y",
+            });
+        });
+    </script> -->
+</head>
+
+<body>
+    <!-- <nav>
+        <ul class = "sidebar">
+            <li><a href="default.asp">Hotpot Menu</a></li>
+            <li><a href="news.asp">Drinks Menu</a></li>
+            <li><a href="contact.asp">Book Now</a></li>
+            <li><a href="about.asp">About</a></li> -->
+    <!-- </ul> -->
+    <!-- </nav> -->
+
+    <main>
+        <!-- Fullscreen Landing Section -->
+        <section id="home" class="home">
+            <nav class="home-nav">
+                <ul>
+
+                    <li><a href="{{ url_for('static', filename='hotpot-menu.pdf') }}" target="_blank">Hotpot Menu</a>
+                    </li>
+                    <!-- <li><a href="news.asp">Drinks Menu</a></li> -->
+                    <li><a href="#reservation">Book Now</a></li>
+
+                </ul>
+            </nav>
+
+            <div class="content">
+                <div class="header-group animate-on-scroll">
+                    <h1 class="chinese stagger-1">九龙鼎</h1>
+                    <h2 class="chinese stagger-2"> 重庆火锅</h2>
+                </div>
+                <div class="subheader-group animate-on-scroll">
+                    <h3 class="english stagger-3">JiuLongDing</h3>
+                    <h4 class="english stagger-4">Chinese Restaurant</h4>
+                    <!-- <p>Specializing in Chongqing Hotpot and Sichuan cuisine<br></p> -->
+                    <a class="english" href="#reservation">Book Now &darr;</a>
+                </div>
+
+            </div>
+        </section>
+        <section class="about-us">
+            <div class="about-photo animate-on-scroll">
+                <img src="../static/photos/hotpot.jpeg" alt="Sydney Chinatown Hotpot Restaurant Photo">
+            </div>
+            <div class="about-text animate-on-scroll">
+                <h2>About Us</h2>
+                <p>
+                    Welcome to JiuLongDing! We are family-owned Chinese restaurant who specialises in authentic
+                    Sichuanese food in the heart of Sydney's Chinatown.
+                </p>
+                <!-- <p>
+                    Our owner grew up in Sichuan, where hotpot isn't just a meal—it's a way of life. 
+                    We specialise in handmade, fresh hotpot soup bases which are made using fresh Australian ingredients in our own kitchens. These soup bases are simmered daily using time-honored recipes and the finest spices. From our numbing-and-spicy mala broth to our rich and savory bone broth, every pot is a labor of love.
+                </p> -->
+            </div>
+        </section>
+        <section id="info-section" class="info-section">
+            <!-- <div class="info-photo">
+                <img src="../static/photos/IMG_20210306_194151.jpg" alt="About Us Photo">
+                
+            </div> -->
+            <div class="info-item animate-on-scroll">
+                <h3>Location</h3>
+                <p>71 Dixon St,<br>Haymarket<br>Sydney, 2000</p>
+                <p>(up the stairs)</p>
+                <a href="https://maps.app.goo.gl/SnuwcJZWN12eVs5A6">Directions</a>
+            </div>
+            <div class="info-item animate-on-scroll">
+                <h3>Opening Hours</h3>
+                <table class="opening-hours">
+                    <tr>
+                        <td>Monday:</td>
+                        <td>12:00 PM - 11:30 PM</td>
+                    </tr>
+                    <tr>
+                        <td>Tuesday:</td>
+                        <td>5:00 PM - 11:30 PM</td>
+                    </tr>
+                    <tr>
+                        <td>Wednesday:</td>
+                        <td>5:00 PM - 11:30 PM</td>
+                    </tr>
+                    <tr>
+                        <td>Thurs-Sun:</td>
+                        <td>12:00 PM - 11:30 PM</td>
+                    </tr>
+                    <tr>
+                        <td>Friday:</td>
+                        <td>12:00 PM - 11:30 PM</td>
+                    </tr>
+                    <tr>
+                        <td>Saturday:</td>
+                        <td>12:00 PM - 11:30 PM</td>
+                    </tr>
+                    <tr>
+                        <td>Sunday:</td>
+                        <td>12:00 PM - 11:30 PM</td>
+                    </tr>
+                </table>
+            </div>
+            <div class="info-item animate-on-scroll">
+                <h3>Contact</h3>
+                <p>Email:
+                    jldhotpotrestaurant@gmail.com<br>
+                    Phone: +61 423 987 048</p>
+                <h3>Order Online</h3>
+                <!-- <a href="store.html">Pre-Order or Order and Pickup</a><br> -->
+                <a href="https://www.fantuanorder.com/store/jiu-long-ding-sichuan-cuisine/au-1509586196">Delivery</a>
+            </div>
+
+        </section>
+        <!-- Reservation Form -->
+        <section id="reservation" class="reservation">
+            <div class="animate-on-scroll">
+                <div class="title">Reservation Enquiries</div>
+                <p class="sub-title">Book your table quickly and easily below</p>
+            </div>
+            <!-- <div class="title">Reservation Enquiries</div>
+            <p class="sub-title">Book your table quickly and easily below</p> -->
+            <!-- <p class="sub-title">Please note that you</p> -->
+
+            {% if error %}
+            <div class="error-message">
+                {{ error }}
+            </div>
+            {% endif %}
+
+            <form action="/submit_reservation" method="POST" class="reservation-form animate-on-scroll">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="name"> 姓名 Full Name</label>
+                        <input type="text" id="name" name="name" placeholder="John Smith" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="email">邮箱 Email Address</label>
+                        <input type="email" id="email" name="email" placeholder="john.smith@gmail.com" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="phone">电话号码 Phone Number</label>
+                        <input type="tel" id="phone" name="phone" placeholder="0412345678" required>
+                        <!-- pattern="^(04|\+?614|614)[0-9]{8}$" title="Please enter a valid Australian mobile number (e.g., 0412345678 or +61412345678)"  -->
+
+                    </div>
+                    <div class="form-group">
+                        <label for="people">人位 Number of People</label>
+                        <select id="people" name="people" required>
+                            <option value="">Select party size</option>
+                            <option value="1-2">1-2</option>
+                            <option value="3-4">3-4</option>
+                            <option value="4-6">4-6</option>
+                            <option value="7-10">7-10</option>
+                            <option value="10+">10+</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="date">日期 Date</label>
+                        <input type="date" id="date" name="date" required>
+                    </div>
+                    <!-- Can only book one month ahead  -->
+                    <script>
+                        // Get the current date
+                        const currentDate = new Date();
+                        const currentHour = currentDate.getHours();
+
+                        // Determine minimum bookable date
+                        let minDate = new Date(currentDate);
+
+                        // If it's after 10 AM, prevent same-day bookings
+                        if (currentHour >= 10) {
+                            minDate.setDate(minDate.getDate() + 1); // Start from tomorrow
+                        }
+
+                        // Format the minimum date as YYYY-MM-DD
+                        const formattedMinDate = minDate.toISOString().split('T')[0];
+
+                        // Calculate the date one month ahead
+                        const oneMonthAhead = new Date(currentDate);
+                        oneMonthAhead.setMonth(oneMonthAhead.getMonth() + 1);
+
+                        // Format the one month ahead date as YYYY-MM-DD for the `max` attribute
+                        const formattedMaxDate = oneMonthAhead.toISOString().split('T')[0];
+
+                        // Set the `min` and `max` attributes of the date picker
+                        const datePicker = document.getElementById('date');
+                        datePicker.setAttribute('min', formattedCurrentDate);
+                        datePicker.setAttribute('max', formattedMaxDate);
+
+                        
+                    //     if (currentHour >= 10) {
+                    //         datePicker.value = formattedMinDate; // Pre-fill with tomorrow's date
+                    //     }
+
+                    //     datePicker.addEventListener('input', function () {
+                    //         if (this.value && this.value < formattedMinDate) {
+                    //             this.value = formattedMinDate;
+                    //         }
+                    //  }
+                    </script>
+                    <div class="form-group">
+                        <label for="time">时间 Time</label>
+                        <select id="time" name="time" required>
+                            <option value="">Select time</option>
+                            <option value="12:00">12:00 PM</option>
+                            <option value="12:30">12:30 PM</option>
+                            <option value="13:00">1:00 PM</option>
+                            <option value="13:30">1:30 PM</option>
+                            <option value="18:00">6:00 PM</option>
+                            <option value="18:30">6:30 PM</option>
+                            <option value="19:00">7:00 PM</option>
+                            <option value="19:30">7:30 PM</option>
+                            <option value="20:00">8:00 PM</option>
+                            <option value="20:30">8:30 PM</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="dish-type">菜类型 Type of Dish</label>
+                        <select id="dish-type" name="dish-type" placeholder="Type of Dish" required>
+                            <option value="">Type of Dish</option>
+                            <option value="大火锅">大火锅 Hotpot - Shared Pot</option>
+                            <option value="小火锅">小火锅 Hotpot - Individual Pot</option>
+                            <option value="炒菜">炒菜或烤鱼 Stir-Fry</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="notes">Notes</label>
+                        <input type="text" id="notes" name="notes"
+                            placeholder="e.g. high chairs, number of people, kids">
+                    </div>
+                </div>
+                <button type="submit" class="submit-btn">SUBMIT</button>
+            </form>
+        </section>
+        <footer class="footer">
+            <div class="footer-content">
+                <p>&copy; JiuLongDing Chongqing Hotpot Sydney. All rights reserved.</p>
+                <!-- <div class="social-links">
+                    <a href="#">Facebook</a> |
+                    <a href="#">Twitter</a> |
+                    <a href="#">Instagram</a>
+                </div> -->
+                <p>Site designed and developed by K.Duan</p>
+            </div>
+        </footer>
+    </main>
+    <script>
+        // show sidebar 
+        function showSidebar() {
+                                const sidebar = document.querySelector('.sidebar')
+                                sidebar.style.display = 'flex'
+                            }
+
+        // Intersection Observer for scroll-triggered animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+
+                    // Add specific animation classes based on position
+                    const rect = entry.target.getBoundingClientRect();
+                    const centerX = window.innerWidth / 2;
+
+                    if (rect.left < centerX) {
+                        entry.target.classList.add('fade-in-left');
+                    } else {
+                        entry.target.classList.add('fade-in-right');
+                    }
+
+                    // Special handling for home section elements
+                    if (entry.target.closest('.home')) {
+                        entry.target.classList.add('fade-in-up');
+                    }
+
+                    // Special handling for info items (scale in effect)
+                    if (entry.target.classList.contains('info-item')) {
+                        entry.target.classList.add('scale-in');
+                    }
+
+                    // Stop observing once animated
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, observerOptions);
+
+        // Observe all elements with the animate-on-scroll class
+        document.addEventListener('DOMContentLoaded', () => {
+            const elementsToAnimate = document.querySelectorAll('.animate-on-scroll');
+            elementsToAnimate.forEach(el => observer.observe(el));
+
+            // Initial animation for home section
+            setTimeout(() => {
+                const homeElements = document.querySelectorAll('.home .animate-on-scroll');
+                homeElements.forEach(el => {
+                    el.classList.add('visible', 'fade-in-up');
+                });
+            }, 300);
+
+            // Smooth scrolling for anchor links
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const targetId = this.getAttribute('href').substring(1);
+                    const targetElement = document.getElementById(targetId);
+                    if (targetElement) {
+                        targetElement.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start'
+                        });
+                    }
+                });
+            });
+
+            // Set up date picker constraints
+            const currentDate = new Date();
+            const formattedCurrentDate = currentDate.toISOString().split('T')[0];
+            const oneMonthAhead = new Date(currentDate);
+            oneMonthAhead.setMonth(oneMonthAhead.getMonth() + 1);
+            const formattedMaxDate = oneMonthAhead.toISOString().split('T')[0];
+
+            const datePicker = document.getElementById('date');
+            if (datePicker) {
+                datePicker.setAttribute('min', formattedCurrentDate);
+                datePicker.setAttribute('max', formattedMaxDate);
+            }
+
+            // Add form interaction animations
+            const formInputs = document.querySelectorAll('input, select');
+            formInputs.forEach(input => {
+                input.addEventListener('focus', function () {
+                    this.parentElement.style.transform = 'scale(1.02)';
+                    this.parentElement.style.transition = 'transform 0.2s ease';
+                });
+
+                input.addEventListener('blur', function () {
+                    this.parentElement.style.transform = 'scale(1)';
+                });
+            });
+
+            // Add hover effect to info items
+            const infoItems = document.querySelectorAll('.info-item');
+            infoItems.forEach(item => {
+                item.addEventListener('mouseenter', function () {
+                    this.style.transform = 'translateY(-10px) scale(1.02)';
+                });
+
+                item.addEventListener('mouseleave', function () {
+                    this.style.transform = 'translateY(0) scale(1)';
+                });
+            });
+        });
+
+        // Optional: Parallax effect for home section
+        window.addEventListener('scroll', () => {
+            const scrolled = window.pageYOffset;
+            const homeSection = document.querySelector('.home');
+            if (homeSection && scrolled < window.innerHeight) {
+                homeSection.style.transform = `translateY(${scrolled * 0.5}px)`;
+            }
+        });
+
+        // Optional: Add typing animation for the main title
+        function typeWriter(element, text, speed = 100) {
+            let i = 0;
+            element.textContent = '';
+
+            function type() {
+                if (i < text.length) {
+                    element.textContent += text.charAt(i);
+                    i++;
+                    setTimeout(type, speed);
+                }
+            }
+            type();
+        }
+
+
+    </script>
+</body>
+
+</html>
