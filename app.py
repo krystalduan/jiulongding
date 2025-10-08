@@ -515,7 +515,7 @@ def staff_login_post():
     if password == staff_password:
         # Store authentication in session
         session['staff_authenticated'] = True
-        session.permanent = 
+        session.permanent = True
         return redirect('/staff/dashboard')
     else:
         return render_template('staff_login.html', error="Invalid password"), 401
