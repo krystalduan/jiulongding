@@ -463,27 +463,27 @@ body {
     justify-content: center;
     color: rgba(22, 20, 20, 0.832);
     max-width: 800px;
-    margin: 0 auto;  
+    margin: 0 auto;
 }
 
 .form-row {
     display: flex;
     width: 100%;
     gap: 1em;
-    align-items: flex-start; 
+    align-items: flex-start;
 }
 
 .form-group {
     flex: 1;
     display: flex;
-    flex-direction: column;   
+    flex-direction: column;
     margin-bottom: 2rem;
     align-items: center;
 }
 
 .form-group label {
-    margin-bottom: 0.5rem;    
-    
+    margin-bottom: 0.5rem;
+
 }
 
 form .input {
@@ -745,79 +745,108 @@ header h1 {
 
 @media (max-width: 768px) {
 
-    .home {
+    /* .home {
         height: 100vh;
     }
-    
+     */
     .content {
         padding-left: 5%;
         padding-right: 5%;
-        padding-top: 10%;
+        padding-top: 15%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
     }
-    
-    /* Scale down Chinese text */
+
+    .content .header-group {
+        gap: 0.5rem;
+        /* Keep them closer together on mobile */
+        justify-content: center;
+    }
+
+    /* Adjust Chinese character sizes for mobile */
     .content h1 {
-        font-size: 10vh;
+        font-size: 12vh;
+        /* Slightly smaller */
     }
-    
+
     .content h2 {
-        font-size: 7vh;
+        font-size: 8vh;
+        padding-top: 1rem;
     }
-    
-    .content h3 {
-        font-size: 1.5rem;
-    }
-    
-    .content h4 {
-        font-size: 1.2rem;
-    }
-    
-    /* Stack about section vertically */
-    .about-us {
-        flex-direction: column;
-        height: auto;
-    }
-    
-    .about-photo, .about-text {
-        flex: 1;
+
+    /* Center the English text group */
+    .content .subheader-group {
         width: 100%;
+        align-items: center;
+        padding-left: 0;
     }
-    
-    /* Fix form inputs */
-    input, select, .input-i {
-        min-width: 100%;
-        width: 100%;
-        max-width: none;
-    }
-    
-    .form-row {
-        flex-direction: column;
-    }
-    
-    /* Stack info section */
-    .info-section {
-        max-width: 90%;
-        padding: 1rem;
-    }
-    
-    .info-item {
-        flex: 1 1 100%;
-    }
-    
-    /* Fix nav on mobile */
+
+    /* Make nav more compact */
     .home-nav {
         top: 10px;
         right: 10px;
     }
-    
+
     .home-nav li a {
-        padding: 8px 12px;
-        font-size: 14px;
+        padding: 8px 15px;
+        font-size: 16px;
     }
 
-    .opening-hours tr {
-        margin-bottom: 1rem;
-        /* Add spacing between each day */
+    /* Stack about section */
+    .about-us {
+        flex-direction: column;
+        height: auto;
+    }
+
+    .about-photo,
+    .about-text {
+        flex: 1;
+        width: 100%;
+    }
+
+    .about-photo img {
+        width: 90%;
+        height: auto;
+    }
+
+    /* Fix forms */
+    input,
+    select,
+    .input-i {
+        min-width: 0;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .form-row {
+        flex-direction: column;
+        gap: 0;
+    }
+
+    .form-group {
+        width: 100%;
+    }
+
+    /* Info section */
+    .info-section {
+        max-width: 95%;
+        padding: 1rem 0.5rem;
+    }
+
+    .info-item {
+        flex: 1 1 100%;
+        padding: 1.5rem 1rem;
+    }
+
+    .opening-hours {
+        padding-left: 0;
+    }
+
+    /* Reservation section */
+    .reservation {
+        padding: 40px 20px;
     }
 }
 
@@ -825,11 +854,11 @@ header h1 {
     .content h1 {
         font-size: 8vh;
     }
-    
+
     .content h2 {
         font-size: 5vh;
     }
-    
+
     .reservation {
         padding: 30px 15px;
     }
