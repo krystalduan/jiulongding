@@ -369,7 +369,6 @@
             const container = document.getElementById('reservationsContainer');
             const statsBar = document.getElementById('statsBar');
 
-
             if (!dateInput.value) {
                 alert('Please select a date');
                 return;
@@ -380,18 +379,13 @@
             statsBar.style.display = 'none';
 
             try {
-                // Get auth credentials from session storage
-                const auth = sessionStorage.getItem('auth');
-                const headers = {};
-                if (auth) {
-                    headers['Authorization'] = 'Basic ' + auth;
+                const response = await fetch(`/staff/api/reservations/${dateInput.value}`);
+                
+                // If not authenticated, redirect to login
+                if (response.status === 401) {
+                    window.location.href = '/staff';
+                    return;
                 }
-
-                console.log('Loading reservations for:', dateInput.value);
-                console.log('Auth header:', auth ? 'present' : 'missing');
-
-                const response = await fetch(`/staff/api/reservations/${dateInput.value}`, { headers });
-                console.log('Response status:', response.status);
 
                 const data = await response.json();
                 console.log('Response data:', data);
@@ -504,18 +498,17 @@
 
         // Update reservation status
         async function updateStatus(date, rowNumber, newStatus) {
-            // STEP 1: Find the specific card and update UI immediately
             const card = document.querySelector(`[data-row="${rowNumber}"]`);
             if (!card) return;
 
             const statusBadge = card.querySelector('.status-badge');
             const quickActions = card.querySelector('.quick-actions');
 
-            // STEP 2: Update UI immediately (this is the optimistic part)
+            // Update UI immediately
             statusBadge.textContent = newStatus;
             statusBadge.className = `status-badge status-${newStatus.toLowerCase()}`;
 
-            // Update buttons immediately too
+            // Update buttons immediately
             quickActions.innerHTML = `
                 ${newStatus !== 'Confirmed' ? `
                 <button class="action-btn btn-confirm" onclick="updateStatus('${date}', ${rowNumber}, 'Confirmed')">
@@ -530,18 +523,11 @@
             showNotification(`Reservation ${newStatus.toLowerCase()}!`, 'success');
 
             try {
-                // STEP 3: Same server call as before
-                const auth = sessionStorage.getItem('auth');
-                const headers = {
-                    'Content-Type': 'application/json',
-                };
-                if (auth) {
-                    headers['Authorization'] = 'Basic ' + auth;
-                }
-
                 const response = await fetch('/staff/api/update_status', {
                     method: 'POST',
-                    headers: headers,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
                     body: JSON.stringify({
                         date: date,
                         row_number: rowNumber,
@@ -549,14 +535,16 @@
                     })
                 });
 
+                // If not authenticated, redirect to login
+                if (response.status === 401) {
+                    window.location.href = '/staff';
+                    return;
+                }
+
                 const result = await response.json();
 
-                if (result.success) {
-                    // STEP 4: Do nothing! UI already shows the right thing
-                    // ❌ Remove this line: loadReservations();
-                } else {
-                    // Only reload if there was an error
-                    loadReservations();
+                if (!result.success) {
+                    loadReservations(); // Reload if there was an error
                     showNotification('Error updating reservation', 'error');
                 }
             } catch (error) {
@@ -591,52 +579,6 @@
 
         // Auto-load today's reservations on page load
         document.addEventListener('DOMContentLoaded', function () {
-            // Extract auth parameter from URL
-            const urlParams = new URLSearchParams(window.location.search);
-            const authParam = urlParams.get('auth');
-
-            if (authParam) {
-                // Store auth credentials for API calls
-                const authCredentials = btoa('staff:' + authParam);
-                sessionStorage.setItem('auth', authCredentials);
-                console.log('✅ Authentication extracted from URL and stored');
-            }
-
-            // Set up authentication if password is provided by the server
-            {% if auth_password %}
-            const authCredentials = btoa('staff:{{ auth_password }}');
-            sessionStorage.setItem('auth', authCredentials);
-            console.log('✅ Authentication credentials stored from server');
-            {% endif %}
-
-            // Override fetch for all staff API calls
-            const originalFetch = window.fetch;
-            window.fetch = function (...args) {
-                let url = args[0];
-                const auth = sessionStorage.getItem('auth');
-
-                console.log('Fetch called for:', url);
-                console.log('Auth available:', auth ? 'yes' : 'no');
-
-                // Add auth header to staff API calls
-                if (auth && url.includes('/staff/api/')) {
-                    if (!args[1]) args[1] = {};
-                    if (!args[1].headers) args[1].headers = {};
-                    args[1].headers['Authorization'] = 'Basic ' + auth;
-                    console.log('✅ Added auth header to:', url);
-                }
-
-                // Alternative: add auth as URL parameter if no auth header
-                if (!auth && url.includes('/staff/api/') && authParam) {
-                    const separator = url.includes('?') ? '&' : '?';
-                    url = url + separator + 'auth=' + authParam;
-                    args[0] = url;
-                    console.log('✅ Added auth parameter to URL:', url);
-                }
-
-                return originalFetch.apply(this, args);
-            };
-
             // Optional: Auto-load today's reservations
             // loadReservations();
         });
