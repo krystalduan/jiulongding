@@ -172,7 +172,7 @@
             font-weight: 600;
             color: #666;
             width: 100px;
-            flex-shrink: 0; 
+            flex-shrink: 0;
             margin-left: 10px;
         }
 
@@ -291,23 +291,23 @@
             body {
                 padding: 5px;
             }
-            
+
             .dashboard-container {
                 border-radius: 15px;
             }
-            
+
             .header h1 {
                 font-size: 20px;
             }
-            
+
             .date-selector {
                 padding: 15px;
             }
-            
+
             .reservation-card {
                 padding: 12px 15px;
             }
-            
+
             .customer-name {
                 font-size: 16px;
             }
@@ -327,7 +327,7 @@
                 <button onclick="loadReservations()" class="load-btn">Load</button>
             </div>
         </div>
-        
+
         <div id="statsBar" class="stats-bar" style="display: flex;">
             <div class="stat-item">
                 <div id="totalReservations" class="stat-number">0</div>
@@ -361,8 +361,8 @@
             const dateInput = document.getElementById('dateInput');
             const container = document.getElementById('reservationsContainer');
             const statsBar = document.getElementById('statsBar');
-            
-            
+
+
             if (!dateInput.value) {
                 alert('Please select a date');
                 return;
@@ -385,7 +385,7 @@
 
                 const response = await fetch(`/staff/api/reservations/${dateInput.value}`, { headers });
                 console.log('Response status:', response.status);
-                
+
                 const data = await response.json();
                 console.log('Response data:', data);
 
@@ -417,19 +417,19 @@
         // Display reservations
         function displayReservations(reservations) {
             const container = document.getElementById('reservationsContainer');
-            
+
             container.innerHTML = reservations.map(reservation => {
-                const statusClass = reservation.confirmed.toLowerCase() === 'confirmed' || reservation.confirmed.toLowerCase() === 'yes' 
-                    ? 'status-confirmed' 
+                const statusClass = reservation.confirmed.toLowerCase() === 'confirmed' || reservation.confirmed.toLowerCase() === 'yes'
+                    ? 'status-confirmed'
                     : reservation.confirmed.toLowerCase() === 'cancelled' || reservation.confirmed.toLowerCase() === 'no'
-                    ? 'status-cancelled'
-                    : 'status-pending';
+                        ? 'status-cancelled'
+                        : 'status-pending';
 
                 const statusText = reservation.confirmed.toLowerCase() === 'confirmed' || reservation.confirmed.toLowerCase() === 'yes'
                     ? 'Confirmed'
                     : reservation.confirmed.toLowerCase() === 'cancelled' || reservation.confirmed.toLowerCase() === 'no'
-                    ? 'Cancelled'
-                    : 'Pending';
+                        ? 'Cancelled'
+                        : 'Pending';
 
                 return `
                     <div class="reservation-card" 
@@ -488,7 +488,7 @@
         function updateStats(data) {
             console.log('updateStats called with:', data);
             console.log('totalPeople element exists?', document.getElementById('totalPeople') !== null);
-    
+
             document.getElementById('totalReservations').textContent = data.reservations.length;
             document.getElementById('confirmedCount').textContent = data.total_confirmed;
             document.getElementById('pendingCount').textContent = data.total_pending;
@@ -500,14 +500,14 @@
             // STEP 1: Find the specific card and update UI immediately
             const card = document.querySelector(`[data-row="${rowNumber}"]`);
             if (!card) return;
-            
+
             const statusBadge = card.querySelector('.status-badge');
             const quickActions = card.querySelector('.quick-actions');
-            
+
             // STEP 2: Update UI immediately (this is the optimistic part)
             statusBadge.textContent = newStatus;
             statusBadge.className = `status-badge status-${newStatus.toLowerCase()}`;
-            
+
             // Update buttons immediately too
             quickActions.innerHTML = `
                 ${newStatus !== 'Confirmed' ? `
@@ -519,7 +519,7 @@
                     ✗ Cancel
                 </button>` : ''}
             `;
-            
+
             showNotification(`Reservation ${newStatus.toLowerCase()}!`, 'success');
 
             try {
@@ -543,7 +543,7 @@
                 });
 
                 const result = await response.json();
-                
+
                 if (result.success) {
                     // STEP 4: Do nothing! UI already shows the right thing
                     // ❌ Remove this line: loadReservations();
@@ -587,30 +587,30 @@
             // Extract auth parameter from URL
             const urlParams = new URLSearchParams(window.location.search);
             const authParam = urlParams.get('auth');
-            
+
             if (authParam) {
                 // Store auth credentials for API calls
                 const authCredentials = btoa('staff:' + authParam);
                 sessionStorage.setItem('auth', authCredentials);
                 console.log('✅ Authentication extracted from URL and stored');
             }
-            
+
             // Set up authentication if password is provided by the server
             {% if auth_password %}
             const authCredentials = btoa('staff:{{ auth_password }}');
             sessionStorage.setItem('auth', authCredentials);
             console.log('✅ Authentication credentials stored from server');
             {% endif %}
-            
+
             // Override fetch for all staff API calls
             const originalFetch = window.fetch;
             window.fetch = function(...args) {
                 let url = args[0];
                 const auth = sessionStorage.getItem('auth');
-                
+
                 console.log('Fetch called for:', url);
                 console.log('Auth available:', auth ? 'yes' : 'no');
-                
+
                 // Add auth header to staff API calls
                 if (auth && url.includes('/staff/api/')) {
                     if (!args[1]) args[1] = {};
@@ -618,7 +618,7 @@
                     args[1].headers['Authorization'] = 'Basic ' + auth;
                     console.log('✅ Added auth header to:', url);
                 }
-                
+
                 // Alternative: add auth as URL parameter if no auth header
                 if (!auth && url.includes('/staff/api/') && authParam) {
                     const separator = url.includes('?') ? '&' : '?';
@@ -626,10 +626,10 @@
                     args[0] = url;
                     console.log('✅ Added auth parameter to URL:', url);
                 }
-                
+
                 return originalFetch.apply(this, args);
             };
-            
+
             // Optional: Auto-load today's reservations
             // loadReservations();
         });
