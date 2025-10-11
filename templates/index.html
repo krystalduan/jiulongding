@@ -6,31 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JLD Chongqing Hotpot</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
-    <!-- <link rel="stylesheet" href="../static/css/styles.css"> -->
-    <!-- <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            flatpickr(".datepicker", {
-                dateFormat: "Y-m-d",
-                altInput: true,
-                altFormat: "F j, Y",
-            });
-        });
-    </script> -->
 </head>
 
 <body>
-    <!-- <nav>
-        <ul class = "sidebar">
-            <li><a href="default.asp">Hotpot Menu</a></li>
-            <li><a href="news.asp">Drinks Menu</a></li>
-            <li><a href="contact.asp">Book Now</a></li>
-            <li><a href="about.asp">About</a></li> -->
-    <!-- </ul> -->
-    <!-- </nav> -->
-
     <main>
-        <!-- Fullscreen Landing Section -->
         <section id="home" class="home">
             <nav class="home-nav">
                 <ul>
@@ -51,7 +30,6 @@
                 <div class="subheader-group animate-on-scroll">
                     <h3 class="english stagger-3">JiuLongDing</h3>
                     <h4 class="english stagger-4">Chinese Restaurant</h4>
-                    <!-- <p>Specializing in Chongqing Hotpot and Sichuan cuisine<br></p> -->
                     <a class="english" href="#reservation">Book Now &darr;</a>
                 </div>
 
@@ -67,17 +45,9 @@
                     Welcome to JiuLongDing! We are family-owned Chinese restaurant who specialises in authentic
                     Sichuanese food in the heart of Sydney's Chinatown.
                 </p>
-                <!-- <p>
-                    Our owner grew up in Sichuan, where hotpot isn't just a meal—it's a way of life. 
-                    We specialise in handmade, fresh hotpot soup bases which are made using fresh Australian ingredients in our own kitchens. These soup bases are simmered daily using time-honored recipes and the finest spices. From our numbing-and-spicy mala broth to our rich and savory bone broth, every pot is a labor of love.
-                </p> -->
             </div>
         </section>
         <section id="info-section" class="info-section">
-            <!-- <div class="info-photo">
-                <img src="../static/photos/IMG_20210306_194151.jpg" alt="About Us Photo">
-                
-            </div> -->
             <div class="info-item animate-on-scroll">
                 <h3>Location</h3>
                 <p>71 Dixon St,<br>Haymarket<br>Sydney, 2000</p>
@@ -134,9 +104,6 @@
                 <div class="title">Reservation Enquiries</div>
                 <p class="sub-title">Book your table quickly and easily below</p>
             </div>
-            <!-- <div class="title">Reservation Enquiries</div>
-            <p class="sub-title">Book your table quickly and easily below</p> -->
-            <!-- <p class="sub-title">Please note that you</p> -->
 
             {% if error %}
             <div class="error-message">
@@ -209,15 +176,6 @@
                         datePicker.setAttribute('max', formattedMaxDate);
 
                         
-                    //     if (currentHour >= 10) {
-                    //         datePicker.value = formattedMinDate; // Pre-fill with tomorrow's date
-                    //     }
-
-                    //     datePicker.addEventListener('input', function () {
-                    //         if (this.value && this.value < formattedMinDate) {
-                    //             this.value = formattedMinDate;
-                    //         }
-                    //  }
                     </script>
                     <div class="form-group">
                         <label for="time">时间 Time</label>
@@ -269,7 +227,7 @@
                                 sidebar.style.display = 'flex'
                             }
 
-        // Intersection Observer for scroll-triggered animations
+        // intersection Observer for scroll-triggered animations
         const observerOptions = {
             threshold: 0.1,
             rootMargin: '0px 0px -50px 0px'
@@ -280,7 +238,7 @@
                 if (entry.isIntersecting) {
                     entry.target.classList.add('visible');
 
-                    // Add specific animation classes based on position
+                    // add specific animation classes based on position
                     const rect = entry.target.getBoundingClientRect();
                     const centerX = window.innerWidth / 2;
 
@@ -360,7 +318,6 @@
                 });
             });
 
-            // Add hover effect to info items
             const infoItems = document.querySelectorAll('.info-item');
             infoItems.forEach(item => {
                 item.addEventListener('mouseenter', function () {
@@ -373,7 +330,6 @@
             });
         });
 
-        // Optional: Parallax effect for home section
         window.addEventListener('scroll', () => {
             const scrolled = window.pageYOffset;
             const homeSection = document.querySelector('.home');
@@ -382,7 +338,6 @@
             }
         });
 
-        // Optional: Add typing animation for the main title
         function typeWriter(element, text, speed = 100) {
             let i = 0;
             element.textContent = '';
