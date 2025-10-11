@@ -98,6 +98,15 @@ def send_tomorrow_confirmations_background():
         result = send_sms_on_date(tomorrow, message_type="day_before")
         print(f"Automatic day-before SMS job completed: {result}")
 
+def keep_alive_ping():
+    """Ping self every 10 minutes to prevent spin-down"""
+    try:
+        render_url = os.environ.get('https://jiulongding.onrender.com/', 'http://localhost:5000')
+        requests.get(f'{render_url}/test', timeout=5)
+        print("✓ Keep-alive ping sent")
+    except Exception as e:
+        print(f"Keep-alive ping failed: {e}")
+
 # =============================================================================
 # SCHEDULER SETUP
 # =============================================================================
@@ -122,7 +131,13 @@ scheduler.add_job(
     minute=45,
     id='daily_sms'
 )
-
+# keep it alive at all times 
+scheduler.add_job(
+    func=keep_alive_ping,
+    trigger="cron",
+    minute='*/10',  # Every 10 minutes
+    id='keep_alive'
+)
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
