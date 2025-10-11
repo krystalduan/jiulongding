@@ -98,10 +98,12 @@ def send_tomorrow_confirmations_background():
         result = send_sms_on_date(tomorrow, message_type="day_before")
         print(f"Automatic day-before SMS job completed: {result}")
 
+
 def keep_alive_ping():
     """Ping self every 10 minutes to prevent spin-down"""
     try:
-        render_url = os.environ.get('https://jiulongding.onrender.com/', 'http://localhost:5000')
+        render_url = os.environ.get(
+            'https://jiulongding.onrender.com/', 'http://localhost:5000')
         requests.get(f'{render_url}/test', timeout=5)
         print("✓ Keep-alive ping sent")
     except Exception as e:
@@ -131,7 +133,7 @@ scheduler.add_job(
     minute=45,
     id='daily_sms'
 )
-# keep it alive at all times 
+# keep it alive at all times
 scheduler.add_job(
     func=keep_alive_ping,
     trigger="cron",
@@ -373,7 +375,7 @@ def send_sms_on_date(target_date, message_type="day_of"):
                 timestamp = datetime.now().strftime('%H:%M')
                 if result:
                     sent_count += 1
-                    
+
                     batch_updates.append({
                         'range': f'K{i}',
                         'values': [[f"{message_type} SMS sent {timestamp}"]]
@@ -385,7 +387,7 @@ def send_sms_on_date(target_date, message_type="day_of"):
                         'range': f'K{i}',
                         'values': [[f"{message_type} SMS failed {timestamp}"]]
                     })
-                   
+
         if batch_updates:
             date_sheet.batch_update(batch_updates)
         return f"SMS Summary for {target_date}: {sent_count} sent successfully, {failed_count} failed"
@@ -448,7 +450,6 @@ def submit_reservation_route():
         print("VALIDATION FAILED - Missing fields")
         return render_template("index.html", error=error)
 
-   
     reservation_id = generate_reservation_id()
     # save to master data sheet
     sheet.append_row(
@@ -492,7 +493,6 @@ def reservation_success():
     )
     email_thread.start()
 
-    
     return render_template('reservation_success.html',
                            name=name, email=email, phone=phone, people=people,
                            date=date, time=time, dish_type=dish_type,
@@ -755,7 +755,6 @@ def get_reservation_date_from_sms(received_at):
             same_day = received_datetime.strftime('%Y-%m-%d')
             return same_day
 
-
         except Exception as e:
             print(f"Error parsing received_at: {e}")
 
@@ -812,7 +811,7 @@ def process_sms_reply_smart(phone_number, message, received_at):
                     status = f"Reply needs review: {message}"
                     method = "SMS"
                     print(f"⚠ Reply needs manual review: {message}")
-                # Batch update both columns 
+                # Batch update both columns
                 date_sheet.batch_update([
                     {
                         'range': f'I{cell.row}',  # Column I: Confirmed status
@@ -911,6 +910,26 @@ def test_scheduler():
     return jsonify({
         'scheduler_running': scheduler.running,
         'jobs': job_info,
+        'current_time': datetime.now().isoformat()
+    })
+
+
+@app.route("/scheduler-status")
+def scheduler_status():
+    """Check if scheduler is running"""
+    jobs = scheduler.get_jobs()
+    job_list = []
+    for job in jobs:
+        job_list.append({
+            'id': job.id,
+            'next_run': str(job.next_run_time),
+            'function': job.func.__name__
+        })
+
+    return jsonify({
+        'scheduler_running': scheduler.running,
+        'total_jobs': len(jobs),
+        'jobs': job_list,
         'current_time': datetime.now().isoformat()
     })
 
