@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JLD Chongqing Hotpot</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
 </head>
 
 <body>
@@ -175,7 +176,7 @@
                         datePicker.setAttribute('min', formattedCurrentDate);
                         datePicker.setAttribute('max', formattedMaxDate);
 
-                        
+
                     </script>
                     <div class="form-group">
                         <label for="time">时间 Time</label>
@@ -216,16 +217,15 @@
         <footer class="footer">
             <div class="footer-content">
                 <p>&copy; JiuLongDing Chongqing Hotpot Sydney. All rights reserved.</p>
-                <p>Site designed and developed by K.Duan</p>
             </div>
         </footer>
     </main>
     <script>
         // show sidebar 
         function showSidebar() {
-                                const sidebar = document.querySelector('.sidebar')
-                                sidebar.style.display = 'flex'
-                            }
+            const sidebar = document.querySelector('.sidebar')
+            sidebar.style.display = 'flex'
+        }
 
         // intersection Observer for scroll-triggered animations
         const observerOptions = {
