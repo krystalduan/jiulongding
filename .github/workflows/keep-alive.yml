@@ -3,7 +3,7 @@ name: Keep Render App Alive
 on:
   schedule:
     # runs every 10 minutes
-    - cron: '*/10 * * * *'
+    - cron: '*/14 * * * *'
   workflow_dispatch: # allow manual trigger from github
 
 jobs:
@@ -13,4 +13,4 @@ jobs:
       - name: Ping the app
         run: |
           echo "Pinging app at $(date)"
-          curl -f https://jiulongding.onrender.com//test || echo "Ping failed"
+          curl -f https://jiulongding.onrender.com/test || echo "Ping failed"
