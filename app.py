@@ -102,8 +102,8 @@ def send_tomorrow_confirmations_background():
 def keep_alive_ping():
     """Ping self every 10 minutes to prevent spin-down"""
     try:
-        render_url = os.environ.get(
-            'https://jiulongding.onrender.com/', 'http://localhost:5000')
+        # RENDER_URL is the variable name, not the URL itself
+        render_url = os.environ.get('RENDER_URL', 'https://jiulongding.onrender.com')
         requests.get(f'{render_url}/test', timeout=5)
         print("✓ Keep-alive ping sent")
     except Exception as e:
