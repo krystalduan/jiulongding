@@ -173,11 +173,14 @@ body {
 /* @import url('https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap'); */
 @font-face {
     font-family: 'chineseFont';
-    src: url(../fonts/No.18-ShangShouJiFengShuFaTi-2.ttf);
+    font-display: block;
+    src: url(../fonts/No.18-ShangShouJiFengShuFaTi-2.woff2) format('woff2'),
+    url(../fonts/No.18-ShangShouJiFengShuFaTi-2.ttf);
 }
 
 .chinese {
     font-family: 'chineseFont';
+    /* font-display: block; */
     /* Font supporting Chinese characters */
 }
 
