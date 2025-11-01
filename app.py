@@ -125,12 +125,12 @@ scheduler = BackgroundScheduler()
 #     id='day_before_sms'
 # )›››
 
-# Day-of reminders at 5:30PM
+# Day-of reminders at 8:30PM
 scheduler.add_job(
     func=send_today_confirmations_background,
     trigger="cron",
     hour=8,
-    minute=45,
+    minute=30,
     id='daily_sms'
 )
 # keep it alive at all times
@@ -363,7 +363,7 @@ def send_sms_on_date(target_date, message_type="day_of"):
             if confirmed == "Pending" and phone:
 
                 sms_message = f"""Hi {name}!
-                This is a reminder of your reservation tomorrow on {date} at {time} for {people} people.
+                This is a reminder of your reservation today on {date} at {time} for {people} people.
                 Please reply Y to confirm or N to cancel.
                 Location: 71 Dixon Street (up the stairs), Haymarket
                  - JLD hotpot restaurant"""
