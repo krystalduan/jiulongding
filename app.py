@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, jsonify, session
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
+from pytz import timezone
 import threading
 import atexit
 import gspread
@@ -113,8 +114,8 @@ def keep_alive_ping():
 # SCHEDULER SETUP
 # =============================================================================
 
-
-scheduler = BackgroundScheduler()
+sydney_tz = timezone('Australia/Sydney')
+scheduler = BackgroundScheduler(timezone=sydney_tz)
 
 # Day-BEFORE reminders at 10 AM (sends to tomorrow's customers)
 # scheduler.add_job(
@@ -125,7 +126,7 @@ scheduler = BackgroundScheduler()
 #     id='day_before_sms'
 # )›››
 
-# Day-of reminders at 8:30PM
+# Day-of reminders at 8:30AM
 scheduler.add_job(
     func=send_today_confirmations_background,
     trigger="cron",
@@ -133,11 +134,11 @@ scheduler.add_job(
     minute=30,
     id='daily_sms'
 )
-# keep it alive at all times
+
 scheduler.add_job(
     func=keep_alive_ping,
     trigger="cron",
-    minute='*/10',  # Every 10 minutes
+    minute='*/10',
     id='keep_alive'
 )
 scheduler.start()
@@ -397,7 +398,7 @@ def send_sms_on_date(target_date, message_type="day_of"):
 
 
 def require_staff_auth():
-    """Simple staff authentication"""
+    """staff authentication"""
     auth = request.authorization
     staff_password = os.environ.get('STAFF_PASSWORD', 'jld2024')
 
@@ -416,10 +417,7 @@ def require_staff_auth():
     print("Authentication successful")
     return True
 
-# =============================================================================
 # CUSTOMER-FACING ROUTES
-# =============================================================================
-
 
 @app.route("/")
 def home():
@@ -497,11 +495,7 @@ def reservation_success():
                            name=name, email=email, phone=phone, people=people,
                            date=date, time=time, dish_type=dish_type,
                            notes=notes, reservation_id=reservation_id)
-
-# =============================================================================
 # STAFF DASHBOARD ROUTES
-# =============================================================================
-
 
 def require_staff_auth(f):
     from functools import wraps
