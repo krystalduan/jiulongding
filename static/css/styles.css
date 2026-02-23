@@ -180,36 +180,24 @@ body {
 
 .chinese {
     font-family: 'chineseFont';
-    /* font-display: block; */
-    /* Font supporting Chinese characters */
 }
 
 .english {
     font-family: 'Garamond', Serif;
-    /* Font for English text */
     font-size: 1.5rem;
     color: #ffffff;
 }
 
 .content {
-    /* position: relative; */
     z-index: 2;
-    /* text-align: center; */
-
-    /* color: #ffffff; Text color for contrast */
     padding-top: 5%;
     padding-left: 20%;
     padding-bottom: 5%;
-    /* gap: 0rem;  */
 }
 
 .content .header-group {
     display: flex;
     gap: 1rem;
-    /* align-items:  center;;  */
-    /* padding-left: 60%; */
-    /* padding-top: 12vh; */
-    /* justify-content: flex-start;  */
 }
 
 .content .subheader-group {
@@ -217,45 +205,34 @@ body {
     flex-direction: column;
     text-align: center;
     align-items: center;
-    /* padding-left: 60%; */
-    /* justify-content: flex-start;  */
-    /* padding-bottom: 9rem; */
     gap: 0rem;
     line-height: .8;
 }
 
 .content h1 {
     color: rgb(255, 255, 255);
-    /* font-size: 8rem; */
     font-size: 17vh;
     margin: 0.3rem 0;
     padding-top: 0.1%;
     writing-mode: vertical-rl;
-    /* or vertical-lr */
     text-orientation: upright;
-    /* text-align: center; */
 }
 
 .content h2 {
     color: rgb(252, 252, 252);
-    /* font-size: 5rem; */
     font-size: 11vh;
     margin: 1.5rem 0;
     padding-top: 1.8rem;
     writing-mode: vertical-rl;
-    /* or vertical-lr */
     text-orientation: upright;
-    /* text-align: center; */
 }
 
 .content h3 {
     color: #f7f3f3;
     ;
-    /* font-size: 2rem; */
     font-size: 2rem;
     margin: 0.5rem 0;
     text-align: center;
-    /* line-height: 1.2;  */
 }
 
 .content h4 {
