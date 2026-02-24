@@ -195,7 +195,7 @@ def clean_phone(phone):
 
 
 def send_confirmation_email(customer_email, customer_name, reservation_details):
-    """Send enhanced confirmation email with reservation summary"""
+    """send confirmation email with reservation summary"""
     try:
         print(f"Attempting to send email to {customer_email}...")
 
@@ -254,7 +254,9 @@ This is an automated reservation summary."""
         return True
 
     except Exception as e:
-        print(f"Error sending email: {e}")
+        print(f"Error sending email to {customer_email}: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
@@ -519,8 +521,6 @@ def staff_login():
 def staff_login_post():
     password = request.form.get('password')
     staff_password = os.environ.get('STAFF_PASSWORD', '123')
-    print(password)
-    print(staff_dashboard)
     if password == staff_password:
         # Store authentication in session
         session['staff_authenticated'] = True
@@ -958,6 +958,15 @@ def test_env():
     API_USERNAME: {os.environ.get('API_USERNAME', 'NOT FOUND')}
     """
 
+@app.route("/test-email")
+def test_email():
+    try:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+            return "✅ Email credentials are valid!"
+    except Exception as e:
+        return f"❌ Email error: {e}"
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
