@@ -105,15 +105,6 @@ def send_tomorrow_confirmations_background():
         print(f"Automatic day-before SMS job completed: {result}")
 
 
-def keep_alive_ping():
-    """Ping self every 10 minutes to prevent spin-down"""
-    try:
-        # RENDER_URL is the variable name, not the URL itself
-        render_url = os.environ.get('RENDER_URL', 'https://jiulongding.onrender.com')
-        requests.get(f'{render_url}/test', timeout=5)
-        print("✓ Keep-alive ping sent")
-    except Exception as e:
-        print(f"Keep-alive ping failed: {e}")
 
 # =============================================================================
 # SCHEDULER SETUP
@@ -147,13 +138,6 @@ scheduler.add_job(
     replace_existing=True
 )
 
-scheduler.add_job(
-    func=keep_alive_ping,
-    trigger=CronTrigger(minute='*/10', timezone=sydney_tz),
-    id='keep_alive',
-    name='Keep Alive Ping',
-    replace_existing=True
-)
 
 try:
     scheduler.start()
@@ -221,8 +205,7 @@ def send_confirmation_email(customer_email, customer_name, reservation_details):
         print(f"Attempting to send email to {customer_email}...")
 
         try:
-            date_obj = datetime.strptime(
-                reservation_details['date'], '%Y-%m-%d')
+            date_obj = datetime.strptime(reservation_details['date'], '%Y-%m-%d')
             formatted_date = date_obj.strftime('%A, %B %d, %Y')
         except:
             formatted_date = reservation_details['date']
@@ -231,6 +214,8 @@ def send_confirmation_email(customer_email, customer_name, reservation_details):
         msg['From'] = EMAIL_ADDRESS
         msg['To'] = customer_email
         msg['Subject'] = f"Booking Summary - {formatted_date} at {reservation_details['time']}"
+
+        # subject = f"Booking Summary - {formatted_date} at {reservation_details['time']}"
 
         text_body = f"""Dear {customer_name},
 
@@ -269,6 +254,14 @@ This is an automated reservation summary."""
             server.starttls()
             server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
             server.send_message(msg)
+
+
+        # r = resend.Emails.send({
+        #     "from": "onboarding@resend.dev",
+        #     "to": customer_email,
+        #     "subject": subject,
+        #     "text": text_body
+        # })
 
         print(
             f"Confirmation email sent to {customer_email} )")
@@ -472,31 +465,18 @@ def submit_reservation_route():
     )
     email_thread.start()
 
-    return redirect(url_for('reservation_success', **reservation_data))
+    session['last_reservation'] = reservation_data
+    return redirect(url_for('reservation_success'))
 
 
 @app.route("/reservation_success")
 def reservation_success():
     """Customer reservation confirmation page"""
-    # print("SUCCESS PAGE LOADED")
+    reservation_data = session.pop('last_reservation', None)
+    if not reservation_data:
+        return redirect('/')
 
-    # Get data from URL parameters
-    name = request.args.get('name', 'N/A')
-    email = request.args.get('email', 'N/A')
-    phone = request.args.get('phone', 'N/A')
-    people = request.args.get('people', 'N/A')
-    date = request.args.get('date', 'N/A')
-    time = request.args.get('time', 'N/A')
-    dish_type = request.args.get('dish_type', 'N/A')
-    notes = request.args.get('notes', 'N/A')
-    reservation_id = request.args.get('reservation_id', 'N/A')
-
-    
-
-    return render_template('reservation_success.html',
-                           name=name, email=email, phone=phone, people=people,
-                           date=date, time=time, dish_type=dish_type,
-                           notes=notes, reservation_id=reservation_id)
+    return render_template('reservation_success.html', **reservation_data)
 
 
 # STAFF DASHBOARD ROUTES
