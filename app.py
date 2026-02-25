@@ -3,6 +3,8 @@ from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, jsonify, session
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+import logging
 from pytz import timezone
 import threading
 import atexit
@@ -18,6 +20,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # Create Flask app
 
@@ -43,6 +47,7 @@ if google_creds:
         creds_file = f.name
     CREDENTIALS = ServiceAccountCredentials.from_json_keyfile_name(
         creds_file, SCOPE)
+    atexit.register(lambda: os.unlink(creds_file))
 else:
     # Development: use local file
     CREDENTIALS = ServiceAccountCredentials.from_json_keyfile_name(
@@ -87,7 +92,7 @@ except Exception as e:
 def send_today_confirmations_background():
     """Background job for day-of SMS reminders"""
     with app.app_context():
-        today = datetime.now().strftime('%Y-%m-%d')
+        today = datetime.now(sydney_tz).strftime('%Y-%m-%d')
         result = send_sms_on_date(today, message_type="day_of")
         print(f"Automatic day-of SMS job completed: {result}")
 
@@ -95,7 +100,7 @@ def send_today_confirmations_background():
 def send_tomorrow_confirmations_background():
     """Background job for day-before SMS reminders"""
     with app.app_context():
-        tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+        tomorrow = (datetime.now(sydney_tz) + timedelta(days=1)).strftime('%Y-%m-%d')
         result = send_sms_on_date(tomorrow, message_type="day_before")
         print(f"Automatic day-before SMS job completed: {result}")
 
@@ -115,7 +120,14 @@ def keep_alive_ping():
 # =============================================================================
 
 sydney_tz = timezone('Australia/Sydney')
-scheduler = BackgroundScheduler(timezone=sydney_tz)
+scheduler = BackgroundScheduler(
+    timezone=sydney_tz,
+    daemon=False,  # ← Important: don't let it be a daemon
+    job_defaults={
+        'coalesce': True,      # Skip missed jobs
+        'max_instances': 1,    # Never run multiple copies
+        'misfire_grace_time': 3600  # forgive up to 1 hour of delays (Render spinup)
+    })
 
 # Day-BEFORE reminders at 10 AM (sends to tomorrow's customers)
 # scheduler.add_job(
@@ -129,19 +141,28 @@ scheduler = BackgroundScheduler(timezone=sydney_tz)
 # Day-of reminders at 8:30AM
 scheduler.add_job(
     func=send_today_confirmations_background,
-    trigger="cron",
-    hour=8,
-    minute=30,
-    id='daily_sms'
+    trigger=CronTrigger(hour=8, minute=30, timezone=sydney_tz),
+    id='send_today_sms',
+    name='Send Today SMS',
+    replace_existing=True
 )
 
 scheduler.add_job(
     func=keep_alive_ping,
-    trigger="cron",
-    minute='*/10',
-    id='keep_alive'
+    trigger=CronTrigger(minute='*/10', timezone=sydney_tz),
+    id='keep_alive',
+    name='Keep Alive Ping',
+    replace_existing=True
 )
-scheduler.start()
+
+try:
+    scheduler.start()
+    logger.info("✅ Scheduler started successfully")
+    for job in scheduler.get_jobs():
+        logger.info(f"   Job: {job.id} - Next run: {job.next_run_time}")
+except Exception as e:
+    logger.error(f"❌ Scheduler failed to start: {e}", exc_info=True)
+
 atexit.register(lambda: scheduler.shutdown())
 
 # =============================================================================
@@ -350,7 +371,7 @@ def send_sms_on_date(target_date, message_type="day_of"):
         batch_updates = []
 
         for i, row in enumerate(all_data[1:], start=2):
-            if len(row) < 9:
+            if len(row) < 10:
                 continue
             name = row[0]
             time = row[1]
@@ -365,11 +386,12 @@ def send_sms_on_date(target_date, message_type="day_of"):
 
             if confirmed == "Pending" and phone:
 
-                sms_message = f"""Hi {name}!
-                This is a reminder of your reservation today on {date} at {time} for {people} people.
-                Please reply Y to confirm or N to cancel.
-                Location: 71 Dixon Street (up the stairs), Haymarket
-                 - JLD hotpot restaurant"""
+                sms_message = (
+                    f"Hi {name}! This is a reminder of your reservation today "
+                    f"at {time} for {people} people.\n"
+                    f"Reply Y to confirm or N to cancel.\n"
+                    f"Location: 71 Dixon St (up the stairs), Haymarket - JLD Hotpot"
+                )
 
                 result = send_sms(phone, sms_message,
                                   custom_ref=f"{message_type}_{datetime.now().timestamp()}")
@@ -399,25 +421,6 @@ def send_sms_on_date(target_date, message_type="day_of"):
         return f"Error sending SMS for {target_date}: {e}"
 
 
-def require_staff_auth():
-    """staff authentication"""
-    auth = request.authorization
-    staff_password = os.environ.get('STAFF_PASSWORD', 'jld2024')
-
-    print(f"Auth received: {auth}")  # debug
-    print(f"Expected password: {staff_password}")  # debug
-
-    if not auth:
-        print("No authorization header")
-        return False
-
-    if auth.password != staff_password:
-        print(
-            f"Password mismatch: got '{auth.password}', expected '{staff_password}'")
-        return False
-
-    print("Authentication successful")
-    return True
 
 # CUSTOMER-FACING ROUTES
 
@@ -459,6 +462,15 @@ def submit_reservation_route():
         'name': name, 'phone': phone, 'email': email, 'people': people,
         'date': date, 'time': time, 'dish_type': dish_type, 'notes': notes, 'reservation_id': reservation_id
     }
+    # Create date-specific sheet
+    create_date_sheet(name, phone, email, people, date,
+                      time, dish_type, notes, reservation_id)
+
+    email_thread = threading.Thread(
+        target=send_email_async,
+        args=(email, name, reservation_data)
+    )
+    email_thread.start()
 
     return redirect(url_for('reservation_success', **reservation_data))
 
@@ -466,7 +478,7 @@ def submit_reservation_route():
 @app.route("/reservation_success")
 def reservation_success():
     """Customer reservation confirmation page"""
-    print("SUCCESS PAGE LOADED")
+    # print("SUCCESS PAGE LOADED")
 
     # Get data from URL parameters
     name = request.args.get('name', 'N/A')
@@ -479,24 +491,14 @@ def reservation_success():
     notes = request.args.get('notes', 'N/A')
     reservation_id = request.args.get('reservation_id', 'N/A')
 
-    # Create date-specific sheet
-    create_date_sheet(name, phone, email, people, date,
-                      time, dish_type, notes, reservation_id)
-    reservation_data = {
-        'name': name, 'phone': phone, 'email': email, 'people': people,
-        'date': date, 'time': time, 'dish_type': dish_type, 'notes': notes, 'reservation_id': reservation_id
-    }
-
-    email_thread = threading.Thread(
-        target=send_email_async,
-        args=(email, name, reservation_data)
-    )
-    email_thread.start()
+    
 
     return render_template('reservation_success.html',
                            name=name, email=email, phone=phone, people=people,
                            date=date, time=time, dish_type=dish_type,
                            notes=notes, reservation_id=reservation_id)
+
+
 # STAFF DASHBOARD ROUTES
 
 def require_staff_auth(f):
@@ -642,10 +644,9 @@ def update_reservation_status():
 
 
 @app.route("/admin")
+@require_staff_auth
 def admin_panel():
     """Admin panel for manual SMS and dashboard access"""
-    if not require_staff_auth():
-        return render_template('staff_login.html'), 401
 
     today = datetime.now().strftime('%Y-%m-%d')
     return f"""
@@ -682,23 +683,21 @@ def admin_panel():
 
 
 @app.route("/send_today_confirmations")
+@require_staff_auth
 def send_today_confirmations():
     """Manual trigger for day-of SMS"""
-    if not require_staff_auth():
-        return "Unauthorized", 401
 
-    today = datetime.now().strftime('%Y-%m-%d')
+    today = datetime.now(sydney_tz).strftime('%Y-%m-%d')
     result = send_sms_on_date(today, message_type="day_of")
     return f"<h2>SMS Results for {today}</h2><p>{result}</p><a href='/admin'>← Back to Admin</a>"
 
 
 @app.route("/send_tomorrow_confirmations")
+@require_staff_auth
 def send_tomorrow_confirmations():
     """Manual trigger for day-before SMS"""
-    if not require_staff_auth():
-        return "Unauthorized", 401
 
-    tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+    tomorrow = (datetime.now(sydney_tz) + timedelta(days=1)).strftime('%Y-%m-%d')
     result = send_sms_on_date(tomorrow, message_type="day_before")
     return f"<h2>SMS Results for {tomorrow}</h2><p>{result}</p><a href='/admin'>← Back to Admin</a>"
 
