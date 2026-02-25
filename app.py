@@ -30,7 +30,7 @@ app.secret_key = os.environ.get('SECRET_KEY')
 
 
 SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
+SMTP_PORT = os.environ.get('SMTP_PORT')
 
 
 # Google Sheets Setup
@@ -47,7 +47,12 @@ if google_creds:
         creds_file = f.name
     CREDENTIALS = ServiceAccountCredentials.from_json_keyfile_name(
         creds_file, SCOPE)
-    atexit.register(lambda: os.unlink(creds_file))
+    def cleanup_creds():
+        try:
+            os.unlink(creds_file)
+        except OSError:
+            pass
+    atexit.register(cleanup_creds)
 else:
     # Development: use local file
     CREDENTIALS = ServiceAccountCredentials.from_json_keyfile_name(
@@ -940,7 +945,7 @@ def test_env():
 @app.route("/test-email")
 def test_email():
     try:
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10) as server:
             server.starttls()
             server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
             return "✅ Email credentials are valid!"
