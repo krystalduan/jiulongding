@@ -14,10 +14,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import requests
 import base64
 import json
-import smtplib
 import os
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
 load_dotenv()
 
@@ -27,10 +24,6 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY')
-
-
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = os.environ.get('SMTP_PORT')
 
 
 # Google Sheets Setup
@@ -63,9 +56,7 @@ gc = gspread.authorize(CREDENTIALS)
 # SMS API setup
 API_URL = "https://api.mobilemessage.com.au/v1/messages"
 
-# Email and MM (SMS) API setup
-EMAIL_ADDRESS = os.environ.get('EMAIL_ADDRESS')
-EMAIL_PASSWORD = os.environ.get('EMAIL_PASSWORD')
+# SMS API setup credentials
 API_USERNAME = os.environ.get('API_USERNAME')
 API_PASSWORD = os.environ.get('API_PASSWORD')
 
@@ -110,6 +101,15 @@ def send_tomorrow_confirmations_background():
         print(f"Automatic day-before SMS job completed: {result}")
 
 
+def keep_alive_ping():
+    """Ping self every 10 minutes to prevent spin-down"""
+    try:
+        render_url = os.environ.get('RENDER_URL', 'https://jiulongding.onrender.com')
+        requests.get(f'{render_url}/test', timeout=5)
+        print("✓ Keep-alive ping sent")
+    except Exception as e:
+        print(f"Keep-alive ping failed: {e}")
+
 
 # =============================================================================
 # SCHEDULER SETUP
@@ -140,6 +140,14 @@ scheduler.add_job(
     trigger=CronTrigger(hour=8, minute=30, timezone=sydney_tz),
     id='send_today_sms',
     name='Send Today SMS',
+    replace_existing=True
+)
+
+scheduler.add_job(
+    func=keep_alive_ping,
+    trigger=CronTrigger(minute='*/10', timezone=sydney_tz),
+    id='keep_alive',
+    name='Keep Alive Ping',
     replace_existing=True
 )
 
@@ -215,12 +223,7 @@ def send_confirmation_email(customer_email, customer_name, reservation_details):
         except:
             formatted_date = reservation_details['date']
 
-        msg = MIMEMultipart()
-        msg['From'] = EMAIL_ADDRESS
-        msg['To'] = customer_email
-        msg['Subject'] = f"Booking Summary - {formatted_date} at {reservation_details['time']}"
-
-        # subject = f"Booking Summary - {formatted_date} at {reservation_details['time']}"
+        subject = f"Booking Summary - {formatted_date} at {reservation_details['time']}"
 
         text_body = f"""Dear {customer_name},
 
@@ -253,20 +256,20 @@ The JiuLongDing Team
 ---
 This is an automated reservation summary."""
 
-        msg.attach(MIMEText(text_body, 'plain'))
-
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-            server.send_message(msg)
-
-
-        # r = resend.Emails.send({
-        #     "from": "onboarding@resend.dev",
-        #     "to": customer_email,
-        #     "subject": subject,
-        #     "text": text_body
-        # })
+        response = requests.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {os.environ.get('RESEND_API_KEY')}"},
+            json={
+                "from": "JLD Hotpot <reservations@jiulongding.com.au>",
+                "to": [customer_email],
+                "subject": subject,
+                "text": text_body
+            },
+            timeout=10
+        )
+        if response.status_code != 200:
+            print(f"Resend error {response.status_code}: {response.text}")
+            return False
 
         print(
             f"Confirmation email sent to {customer_email} )")
@@ -945,10 +948,20 @@ def test_env():
 @app.route("/test-email")
 def test_email():
     try:
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10) as server:
-            server.starttls()
-            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-            return "✅ Email credentials are valid!"
+        response = requests.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {os.environ.get('RESEND_API_KEY')}"},
+            json={
+                "from": "JLD Hotpot <reservations@jiulongding.com.au>",
+                "to": [os.environ.get('EMAIL_ADDRESS')],
+                "subject": "JLD Email Test",
+                "text": "Test email from JLD reservation system."
+            },
+            timeout=10
+        )
+        if response.status_code == 200:
+            return "✅ Resend email sent successfully!"
+        return f"❌ Resend error {response.status_code}: {response.text}"
     except Exception as e:
         return f"❌ Email error: {e}"
 

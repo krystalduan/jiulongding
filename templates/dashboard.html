@@ -14,202 +14,250 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #f3f4f6;
             min-height: 100vh;
-            padding: 10px;
+            color: #111827;
         }
 
-        .dashboard-container {
-            max-width: 500px;
-            margin: 0 auto;
+        /* ── Top bar ── */
+        .topbar {
             background: white;
-            border-radius: 20px;
-            overflow: hidden;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
-        }
-
-        .header {
-            background: linear-gradient(135deg, #d32f2f, #f44336);
-            color: white;
-            padding: 20px;
-            text-align: center;
-        }
-
-        .header h1 {
-            font-size: 24px;
-            font-weight: 700;
-            margin-bottom: 5px;
-        }
-
-        .header p {
-            font-size: 14px;
-            opacity: 0.9;
-        }
-
-        .date-selector {
-            padding: 20px;
-            background: #f8f9fa;
-            border-bottom: 1px solid #e9ecef;
-        }
-
-        .date-input-group {
+            border-bottom: 1px solid #e5e7eb;
+            padding: 0 24px;
+            height: 56px;
             display: flex;
-            gap: 10px;
             align-items: center;
+            justify-content: space-between;
+        }
+
+        .topbar-brand {
+            font-size: 15px;
+            font-weight: 700;
+            color: #111827;
+            letter-spacing: -0.2px;
+        }
+
+        .topbar-sub {
+            font-size: 12px;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* ── Main layout ── */
+        .main {
+            max-width: 860px;
+            margin: 32px auto;
+            padding: 0 16px;
+        }
+
+        /* ── Date picker card ── */
+        .date-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 20px 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .date-card label {
+            font-size: 13px;
+            font-weight: 500;
+            color: #6b7280;
+            white-space: nowrap;
         }
 
         .date-input {
             flex: 1;
-            padding: 12px 16px;
-            border: 2px solid #e9ecef;
-            border-radius: 12px;
-            font-size: 16px;
+            padding: 9px 14px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 15px;
+            color: #111827;
             background: white;
-            transition: all 0.3s ease;
+            transition: border-color 0.15s, box-shadow 0.15s;
         }
 
         .date-input:focus {
             outline: none;
-            border-color: #d32f2f;
-            box-shadow: 0 0 0 3px rgba(211, 47, 47, 0.1);
+            border-color: #b91c1c;
+            box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.08);
         }
 
         .load-btn {
-            padding: 12px 20px;
-            background: #d32f2f;
+            padding: 10px 20px;
+            background: #b91c1c;
             color: white;
             border: none;
-            border-radius: 12px;
-            font-size: 16px;
+            border-radius: 8px;
+            font-size: 14px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s ease;
-            min-width: 80px;
+            white-space: nowrap;
+            min-height: 44px;
+            touch-action: manipulation;
+            transition: background 0.15s;
         }
 
-        .load-btn:hover {
-            background: #b71c1c;
-            transform: translateY(-1px);
-        }
+        .load-btn:hover { background: #991b1b; }
+        .load-btn:active { background: #7f1d1d; }
 
-        .load-btn:active {
-            transform: translateY(0);
-        }
-
+        /* ── Stats bar ── */
         .stats-bar {
-            display: flex;
-            justify-content: space-around;
-            padding: 15px;
-            background: #f8f9fa;
-            border-bottom: 1px solid #e9ecef;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 16px;
         }
 
         .stat-item {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 16px 20px;
             text-align: center;
-            flex: 1;
         }
 
         .stat-number {
-            font-size: 20px;
-            font-weight: bold;
-            color: #d32f2f;
+            font-size: 28px;
+            font-weight: 700;
+            color: #111827;
+            line-height: 1;
         }
 
         .stat-label {
             font-size: 12px;
-            color: #666;
-            margin-top: 2px;
+            color: #9ca3af;
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
         }
 
+        /* ── Reservations list ── */
         .reservations-container {
-            max-height: 60vh;
-            overflow-y: auto;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            overflow: hidden;
         }
 
         .reservation-card {
-            padding: 15px 20px;
-            border-bottom: 1px solid #f0f0f0;
-            transition: all 0.3s ease;
+            padding: 18px 24px;
+            border-bottom: 1px solid #f3f4f6;
+            transition: background 0.1s;
+        }
+
+        .reservation-card:last-child {
+            border-bottom: none;
         }
 
         .reservation-card:hover {
-            background: #f8f9ff;
+            background: #fafafa;
         }
 
+        /* Top row: name + time */
         .reservation-header {
             display: flex;
-            justify-content: between;
+            justify-content: space-between;
             align-items: center;
-            margin-bottom: 8px;
+            gap: 12px;
+            margin-bottom: 10px;
         }
 
         .customer-name {
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 600;
-            color: #333;
-            flex: 1;
+            color: #111827;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .time-badge {
-            background: #e3f2fd;
-            color: #1976d2;
-            padding: 4px 12px;
-            border-radius: 20px;
             font-size: 14px;
             font-weight: 600;
+            color: #374151;
+            background: #f3f4f6;
+            padding: 4px 12px;
+            border-radius: 6px;
+            border: 1px solid #e5e7eb;
         }
 
+        /* Detail rows */
         .reservation-details {
-            margin: 8px 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 20px;
+            margin-bottom: 12px;
         }
 
         .detail-row {
             display: flex;
-            margin-bottom: 4px;
-            font-size: 14px;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
         }
 
         .detail-label {
-            font-weight: 600;
-            color: #666;
-            width: 100px;
-            flex-shrink: 0;
-            margin-left: 10px;
+            color: #9ca3af;
+            font-weight: 500;
         }
 
         .detail-value {
-            color: #333;
-            flex: 1;
+            color: #374151;
         }
 
+        /* Notes */
+        .notes-section {
+            background: #f9fafb;
+            border: 1px solid #f3f4f6;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 13px;
+            color: #6b7280;
+            margin-bottom: 12px;
+        }
+
+        .notes-section strong {
+            color: #374151;
+        }
+
+        /* Status + actions row */
         .status-container {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-top: 10px;
         }
 
         .status-badge {
-            padding: 6px 16px;
-            border-radius: 20px;
-            font-size: 13px;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 12px;
             font-weight: 600;
             text-transform: uppercase;
+            letter-spacing: 0.4px;
         }
 
         .status-confirmed {
-            background: #e8f5e8;
-            color: #2e7d32;
+            background: #f0fdf4;
+            color: #16a34a;
+            border: 1px solid #bbf7d0;
         }
 
         .status-pending {
-            background: #fff3e0;
-            color: #f57c00;
+            background: #fffbeb;
+            color: #d97706;
+            border: 1px solid #fde68a;
         }
 
         .status-cancelled {
-            background: #ffebee;
-            color: #c62828;
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
         }
 
         .quick-actions {
@@ -218,124 +266,183 @@
         }
 
         .action-btn {
-            padding: 6px 12px;
-            border: none;
-            border-radius: 8px;
-            font-size: 12px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
             cursor: pointer;
-            transition: all 0.3s ease;
+            border: 1px solid transparent;
+            min-height: 36px;
+            touch-action: manipulation;
+            transition: all 0.15s;
+            -webkit-tap-highlight-color: transparent;
         }
 
         .btn-confirm {
-            background: #4caf50;
-            color: white;
+            background: white;
+            color: #16a34a;
+            border-color: #bbf7d0;
         }
+
+        .btn-confirm:hover { background: #f0fdf4; }
+        .btn-confirm:active { background: #dcfce7; }
 
         .btn-cancel {
-            background: #f44336;
-            color: white;
+            background: white;
+            color: #dc2626;
+            border-color: #fecaca;
         }
 
-        .btn-confirm:hover {
-            background: #45a049;
+        .btn-cancel:hover { background: #fef2f2; }
+        .btn-cancel:active { background: #fee2e2; }
+
+        /* Phone call link */
+        .phone-link {
+            color: #374151;
+            text-decoration: none;
+            border-bottom: 1px solid #e5e7eb;
         }
 
-        .btn-cancel:hover {
-            background: #da190b;
-        }
+        .phone-link:hover { color: #b91c1c; border-bottom-color: #b91c1c; }
 
+        /* ── Loading / empty states ── */
         .loading {
             text-align: center;
-            padding: 40px 20px;
-            color: #666;
+            padding: 48px 20px;
+            color: #9ca3af;
+            font-size: 14px;
         }
 
         .spinner {
             display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #d32f2f;
+            width: 18px;
+            height: 18px;
+            border: 2px solid #e5e7eb;
+            border-top-color: #b91c1c;
             border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-right: 10px;
+            animation: spin 0.7s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
         }
 
         @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
+            to { transform: rotate(360deg); }
         }
 
         .empty-state {
             text-align: center;
-            padding: 40px 20px;
-            color: #666;
+            padding: 48px 20px;
+            color: #9ca3af;
         }
 
         .empty-icon {
-            font-size: 48px;
-            margin-bottom: 15px;
-            opacity: 0.5;
+            font-size: 36px;
+            margin-bottom: 12px;
+            opacity: 0.4;
         }
 
-        .notes-section {
-            margin-top: 8px;
-            padding: 8px;
-            background: #f8f9fa;
-            border-radius: 8px;
+        .empty-state h3 {
+            font-size: 15px;
+            font-weight: 600;
+            color: #6b7280;
+            margin-bottom: 4px;
+        }
+
+        .empty-state p {
             font-size: 13px;
-            color: #666;
         }
 
-        /* Responsive improvements */
-        @media (max-width: 480px) {
-            body {
-                padding: 5px;
+        /* ── Mobile ── */
+        @media (max-width: 600px) {
+            .main {
+                margin: 12px auto;
             }
 
-            .dashboard-container {
-                border-radius: 15px;
+            .topbar {
+                padding: 0 16px;
             }
 
-            .header h1 {
-                font-size: 20px;
+            .date-card {
+                flex-wrap: wrap;
+                padding: 14px 16px;
+                gap: 10px;
             }
 
-            .date-selector {
-                padding: 15px;
+            .date-card label {
+                width: 100%;
+            }
+
+            .date-input {
+                flex: 1;
+                font-size: 16px; /* prevents iOS zoom on focus */
+            }
+
+            .load-btn {
+                width: 100%;
+            }
+
+            .stats-bar {
+                gap: 8px;
+            }
+
+            .stat-item {
+                padding: 12px 8px;
+            }
+
+            .stat-number {
+                font-size: 22px;
             }
 
             .reservation-card {
-                padding: 12px 15px;
+                padding: 14px 16px;
             }
 
             .customer-name {
-                font-size: 16px;
+                font-size: 15px;
+            }
+
+            .reservation-details {
+                flex-direction: column;
+                gap: 5px;
+                margin-bottom: 10px;
+            }
+
+            .status-container {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .quick-actions {
+                width: 100%;
+            }
+
+            .action-btn {
+                flex: 1;
+                min-height: 44px;
+                font-size: 14px;
+                text-align: center;
             }
         }
     </style>
 </head>
 
 <body>
-    <div class="dashboard-container">
-        <div class="header">
-            <h1>🍲 JLD Reservations</h1>
-            <p>九龙鼎重庆火锅 Dashboard</p>
+    <div class="topbar">
+        <div>
+            <div class="topbar-brand">JiuLongDing</div>
+            <div class="topbar-sub">Reservations</div>
+        </div>
+    </div>
+
+    <div class="main">
+        <div class="date-card">
+            <label for="dateInput">Date</label>
+            <input type="date" id="dateInput" class="date-input" value="{{ default_date }}">
+            <button onclick="loadReservations()" class="load-btn">Load</button>
         </div>
 
-        <div class="date-selector">
-            <div class="date-input-group">
-                <input type="date" id="dateInput" class="date-input" value="{{ default_date }}">
-                <button onclick="loadReservations()" class="load-btn">Load</button>
-            </div>
-        </div>
-
-        <div id="statsBar" class="stats-bar" style="display: flex;">
+        <div id="statsBar" class="stats-bar" style="display: none;">
             <div class="stat-item">
                 <div id="totalReservations" class="stat-number">0</div>
                 <div class="stat-label">Total</div>
@@ -348,15 +455,10 @@
                 <div id="pendingCount" class="stat-number">0</div>
                 <div class="stat-label">Pending</div>
             </div>
-            <!-- <div class="stat-item">
-                <div id="totalPeople" class="stat-number">0</div>
-                <div class="stat-label">People</div>
-            </div> -->
         </div>
 
         <div id="reservationsContainer" class="reservations-container">
             <div class="loading">
-                <div class="spinner"></div>
                 Select a date and click Load to view reservations
             </div>
         </div>
@@ -380,7 +482,7 @@
 
             try {
                 const response = await fetch(`/staff/api/reservations/${dateInput.value}`);
-                
+
                 // If not authenticated, redirect to login
                 if (response.status === 401) {
                     window.location.href = '/staff';
@@ -393,7 +495,7 @@
                 if (data.success && data.reservations.length > 0) {
                     displayReservations(data.reservations);
                     updateStats(data);
-                    statsBar.style.display = 'flex';
+                    statsBar.style.display = 'grid';
                 } else {
                     container.innerHTML = `
                         <div class="empty-state">
@@ -406,7 +508,7 @@
             } catch (error) {
                 container.innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-icon">❌</div>
+                        <div class="empty-icon">⚠</div>
                         <h3>Error loading reservations</h3>
                         <p>Please try again</p>
                     </div>
@@ -433,32 +535,32 @@
                         : 'Pending';
 
                 return `
-                    <div class="reservation-card" 
-                        data-row="${reservation.row_number}" 
+                    <div class="reservation-card"
+                        data-row="${reservation.row_number}"
                         data-date="${reservation.date}">
                         <div class="reservation-header">
                             <div class="customer-name">${reservation.name}</div>
                             <div class="time-badge">${reservation.time}</div>
                         </div>
-                        
+
                         <div class="reservation-details">
                             <div class="detail-row">
-                                <span class="detail-label">People:</span>
-                                <span class="detail-value">${reservation.people} people</span>
+                                <span class="detail-label">People</span>
+                                <span class="detail-value">${reservation.people}</span>
                             </div>
                             <div class="detail-row">
-                                <span class="detail-label">Phone:</span>
-                                <span class="detail-value">${reservation.phone}</span>
+                                <span class="detail-label">Phone</span>
+                                <span class="detail-value"><a href="tel:${reservation.phone}" class="phone-link">${reservation.phone}</a></span>
                             </div>
                             ${reservation.dish_type ? `
                             <div class="detail-row">
-                                <span class="detail-label">Dish:</span>
+                                <span class="detail-label">Dish</span>
                                 <span class="detail-value">${reservation.dish_type}</span>
                             </div>` : ''}
                             ${reservation.reservation_id ? `
                             <div class="detail-row">
-                                <span class="detail-label">Customer ID:</span>
-                                <span class="detail-value">${reservation.reservation_id}</span>
+                                <span class="detail-label">ID</span>
+                                <span class="detail-value">#${reservation.reservation_id}</span>
                             </div>` : ''}
                         </div>
 
@@ -472,11 +574,11 @@
                             <div class="quick-actions">
                                 ${statusText !== 'Confirmed' ? `
                                 <button class="action-btn btn-confirm" onclick="updateStatus('${reservation.date}', ${reservation.row_number}, 'Confirmed')">
-                                    ✓ Confirm
+                                    Confirm
                                 </button>` : ''}
                                 ${statusText !== 'Cancelled' ? `
                                 <button class="action-btn btn-cancel" onclick="updateStatus('${reservation.date}', ${reservation.row_number}, 'Cancelled')">
-                                    ✗ Cancel
+                                    Cancel
                                 </button>` : ''}
                             </div>
                         </div>
@@ -512,15 +614,15 @@
             quickActions.innerHTML = `
                 ${newStatus !== 'Confirmed' ? `
                 <button class="action-btn btn-confirm" onclick="updateStatus('${date}', ${rowNumber}, 'Confirmed')">
-                    ✓ Confirm
+                    Confirm
                 </button>` : ''}
                 ${newStatus !== 'Cancelled' ? `
                 <button class="action-btn btn-cancel" onclick="updateStatus('${date}', ${rowNumber}, 'Cancelled')">
-                    ✗ Cancel
+                    Cancel
                 </button>` : ''}
             `;
 
-            showNotification(`Reservation ${newStatus.toLowerCase()}!`, 'success');
+            showNotification(`Reservation ${newStatus.toLowerCase()}`, 'success');
 
             try {
                 const response = await fetch('/staff/api/update_status', {
@@ -559,15 +661,16 @@
             const notification = document.createElement('div');
             notification.style.cssText = `
                 position: fixed;
-                top: 20px;
-                right: 20px;
+                bottom: 24px;
+                right: 24px;
                 padding: 12px 20px;
                 border-radius: 8px;
                 color: white;
-                font-weight: 600;
+                font-size: 14px;
+                font-weight: 500;
                 z-index: 1000;
-                transition: all 0.3s ease;
-                ${type === 'success' ? 'background: #4caf50;' : 'background: #f44336;'}
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                ${type === 'success' ? 'background: #16a34a;' : 'background: #dc2626;'}
             `;
             notification.textContent = message;
             document.body.appendChild(notification);

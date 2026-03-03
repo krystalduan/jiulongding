@@ -4,11 +4,9 @@ body {
     padding: 0;
     height: 100%;
     box-sizing: border-box;
-    font-family: 'Opens Sans Serif';
+    font-family: 'EB Garamond', Georgia, serif;
     scroll-behavior: smooth;
-    /* background-color: #0e0d0d; */
-    background-color: #f8f8f8;
-
+    background-color: #FAF7F2;
 }
 
 /* Animation keyframes */
@@ -133,7 +131,7 @@ body {
     /* border-right: 1px solid rgba(255, 255, 255, 0.2); */
     transition: all 0.3s ease;
     font-weight: 500;
-    font-size: 18px;
+    font-size: 30px;
     /* backdrop-filter: blur(10px); */
 }
 
@@ -143,7 +141,8 @@ body {
 .home-nav li a:hover {
     /* background: rgba(255, 255, 255, 0.2); */
     /* transform: translateY(-2px); */
-    color: grey;
+    color: rgb(241, 188, 88);
+    
     /* Change color on hover, optional */
     text-decoration: underline;
 }
@@ -153,6 +152,7 @@ body {
     height: 80vh;
     display: flex;
     width: 100%;
+    overflow: hidden;
     background: url(../photos/IMG_20210306_194151.jpg);
     background-size: cover;
     background-position: center;
@@ -170,7 +170,13 @@ body {
     z-index: 2;
 }
 
-/* @import url('https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap'); */
+@font-face {
+    font-family: 'EB Garamond';
+    src: url(../fonts/EBGaramond-VariableFont_wght.ttf) format('truetype');
+    font-weight: 100 900;
+    font-display: swap;
+}
+
 @font-face {
     font-family: 'chineseFont';
     font-display: block;
@@ -183,16 +189,17 @@ body {
 }
 
 .english {
-    font-family: 'Garamond', Serif;
+    font-family: 'EB Garamond', Garamond, Georgia, serif;
     font-size: 1.5rem;
     color: #ffffff;
+    letter-spacing: 0.04em;
 }
 
 .content {
     z-index: 2;
-    padding-top: 5%;
+    padding-top: 5vh;
     padding-left: 20%;
-    padding-bottom: 5%;
+    padding-bottom: 5vh;
 }
 
 .content .header-group {
@@ -222,27 +229,23 @@ body {
     color: rgb(252, 252, 252);
     font-size: 11vh;
     margin: 1.5rem 0;
-    padding-top: 1.8rem;
+    padding-top: 4vh;
     writing-mode: vertical-rl;
     text-orientation: upright;
 }
 
 .content h3 {
     color: #f7f3f3;
-    ;
-    font-size: 2rem;
+    font-size: 4vh;
     margin: 0.5rem 0;
     text-align: center;
 }
 
 .content h4 {
-    color: #f7f1f1e8;
-    ;
-    font-size: 1.5rem;
-    /* font-size: 4vmin; */
+    color: #f7f3f3;
+    font-size: 3vh;
     margin: 0.5rem 0;
     text-align: center;
-    /* line-height: 1.2;  */
 }
 
 .home p {
@@ -254,7 +257,7 @@ body {
 .home a {
     color: rgb(255, 255, 255);
     /* Replace with your desired color */
-    font-size: 1.5rem;
+    font-size: 4vh;
     text-decoration: none;
     /* Removes the underline, optional */
     font-weight: bold;
@@ -276,16 +279,14 @@ body {
 .about-us {
     display: flex;
     height: 70vh;
-    /* Full viewport height */
     overflow: hidden;
-    /* Prevents content overflow */
 }
 
 .about-photo {
     flex: 1.5;
     /* Takes up half the screen */
-    background-color: #252121;
-    /* Fallback color if image doesn't load */
+    background-color:#e6c0ac ;
+    /* Fallback color if image doesn't load #252121*/
     display: flex;
     align-items: center;
     justify-content: center;
@@ -300,60 +301,59 @@ body {
 
 .about-text {
     flex: 1.2;
-    /* Takes up the other half */
     display: flex;
     flex-direction: column;
     justify-content: center;
-    padding: 2rem;
-    /* Adds spacing around the text */
-    /* background-color: #f8f8f8; */
-    background-color: rgb(231, 223, 222);
-    /* Light background for contrast */
-    color: #333;
-    /* Dark text for readability */
-    box-shadow: -5px 0 10px rgba(0, 0, 0, 0.1);
-    /* Slight shadow for separation */
+    padding: 2.5rem 3rem;
+    background-color: #efddd3;
+    color: #1C1008;
+    /* box-shadow: -5px 0 10px rgba(0, 0, 0, 0.08); */
 }
 
 .about-text h2 {
-    font-size: 2.5rem;
-    margin-bottom: 1rem;
+    font-family: 'EB Garamond', Georgia, serif;
+    font-size: 4vh;
+    font-weight: 500;
+    margin-bottom: 0.75rem;
     text-align: center;
-    color: #222;
-    /* Slightly darker for emphasis */
+    color: #1C1008;
+}
+
+.about-text h2::after {
+    content: '';
+    display: block;
+    width: 48px;
+    height: 2px;
+    background: #8B1A1A;
+    margin: 10px auto 0;
 }
 
 .about-text p {
-    font-size: 1.2rem;
-    line-height: 1.6;
+    font-size: 2.5vh;
+    line-height: 1.8;
     text-align: center;
     margin-bottom: 1rem;
+    margin-top: 1rem;
+    color: #050404;
 }
 
 /* Contact section */
 
 .info-section {
     display: flex;
-    /* border: 2px solid red; */
     flex-wrap: wrap;
     gap: 1.5rem;
-    /* Space between columns */
     justify-content: left;
-    /* Center items when wrapping */
-    /* text-align: center; */
-    /* padding: 2rem; */
-    padding-top: 1rem;
+    padding: 2.5rem 0;
     margin: 0 auto;
     max-width: 70%;
-    background-color: #f8f8f8;
-    /* background-color: rgb(214, 198, 197); */
+    background-color: #FAF7F2;
     box-sizing: border-box;
-
-
+    /* border-top: 2px solid #8B1A1A; */
 }
 
 .info-item {
-    flex: 1 1 calc(33.333% - 1rem);
+    flex: 1 1 250px;
     box-sizing: border-box;
     text-align: center;
     padding: 2rem;
@@ -366,24 +366,26 @@ body {
 
 
 .info-section h3 {
-    color: #0e0d0d;
-    font-size: 1.8rem;
+    color: #b01414;
+    font-family: 'EB Garamond', Georgia, serif;
+    font-size: 35px;
+    font-weight: 500;
     text-align: center;
-    font-weight: bold;
+    margin-bottom: 0.75rem;
 }
 
 .info-section p {
-    /* color: rgb(250, 250, 250); */
-    color: #0e0d0d;
-    font-size: 1.2rem;
+    color: #3D2B1F;
+    font-size: 2vh;
     text-align: center;
+    line-height: 1.2;
 }
 
 .info-item a {
     color: rgb(241, 149, 74);
-    font-size: 1rem;
+    font-size: 2vh;
     font-weight: bold;
-    line-height: 1.6;
+    line-height: 1.2;
     text-decoration: underline;
 }
 
@@ -402,6 +404,7 @@ body {
     text-align: left;
     white-space: nowrap;
     vertical-align: top;
+    font-size: 2vh;
 }
 
 .opening-hours td:first-child {
@@ -418,22 +421,35 @@ body {
 /* -- .reservation */
 .reservation {
     min-height: 60vh;
-    background-color: rgb(231, 223, 222);
+    background-color: #e6c0ac;
     padding: 60px;
-
 }
 
 .reservation .title {
     text-align: center;
-    color: rgb(8, 8, 8);
-    font-size: 2rem;
-    margin-bottom: 1rem;
+    font-family: 'EB Garamond', Georgia, serif;
+    font-size: 3.5rem;
+    font-weight: 500;
+    color: #1C1008;
+    margin-bottom: 0.5rem;
+    letter-spacing: 0.02em;
+}
+
+.reservation .title::after {
+    content: '';
+    display: block;
+    width: 48px;
+    height: 2px;
+    background: #8B1A1A;
+    margin: 10px auto 0;
 }
 
 .reservation .sub-title {
     text-align: center;
+    margin-top: 1rem;
     margin-bottom: 2rem;
-    color: #0c0c0c;
+    color: #3D2B1F;
+    font-size: 1.1rem;
 }
 
 .reservation-form {
@@ -442,7 +458,7 @@ body {
     align-items: center;
     justify-content: center;
     color: rgba(22, 20, 20, 0.832);
-    max-width: 800px;
+    max-width: 960px;
     margin: 0 auto;
 }
 
@@ -463,7 +479,7 @@ body {
 
 .form-group label {
     margin-bottom: 0.5rem;
-
+    font-size: 1.1rem;
 }
 
 form .input {
@@ -472,17 +488,21 @@ form .input {
 
 select {
     outline: none;
-    border: 1px solid #2c2c2a;
-    height: 40px;
+    border: 1px solid #8b7e6c;
+    height: 52px;
     max-width: 400px;
     min-width: 200px;
-    background-color: transparent;
+    background-color: #FAF7F2;
     display: flex;
     align-items: center;
-    border-radius: 5px;
-    color: grey;
-    width: 60%;
+    border-radius: 6px;
+    color: #a19c9c;
+    width: 75%;
     box-sizing: border-box;
+    font-size: 1.1rem;
+    font-family: 'EB Garamond', Georgia, serif;
+    padding: 0 12px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 select option:disabled {
@@ -492,20 +512,27 @@ select option:disabled {
 input,
 .input-i {
     outline: none;
-    border: 1px solid #2c2c2a;
-    height: 40px;
+    border: 1px solid #8b7e6c;
+    height: 52px;
     max-width: 400px;
     min-width: 200px;
-    background-color: transparent;
+    background-color: #FAF7F2;
     display: flex;
     align-items: center;
-    border-radius: 5px;
-    color: #0e0d0d;
-    ;
-    /* padding: 14px;
-    padding-right: 25px; */
-    width: 60%;
+    border-radius: 6px;
+    color: #1C1008;
+    width: 75%;
     box-sizing: border-box;
+    padding: 0 14px;
+    font-family: 'EB Garamond', Georgia, serif;
+    font-size: 1.1rem;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+input:focus,
+select:focus {
+    border-color: #8B1A1A;
+    box-shadow: 0 0 0 3px rgba(139, 26, 26, 0.1);
 }
 
 ::placeholder {
@@ -538,48 +565,33 @@ select:valid {
 
 
 .submit-btn {
-    background-color: #a10d0d;
+    background-color: #8B1A1A;
     border: none;
-    color: rgb(253, 250, 250);
-    font-size: 18px;
-    font-family: sans-serif;
-    border-radius: 10px;
+    color: #FAF7F2;
+    font-size: 1.1rem;
+    font-family: 'EB Garamond', Georgia, serif;
+    letter-spacing: 0.08em;
+    border-radius: 6px;
     cursor: pointer;
     width: 200px;
     height: 50px;
     display: block;
-    transition: color 0.3s;
-    font-weight: bold;
+    font-weight: 500;
+    transition: background-color 0.2s ease, transform 0.1s ease;
 }
 
 .submit-btn:hover {
-    color: #ffffff;
-    font-weight: bold;
-    background-color: #630606;
+    background-color: #6B1212;
+}
+
+.submit-btn:active {
+    transform: translateY(1px);
 }
 
 
 body {
-    background: black;
-    color: white;
-}
-
-header {
-    background-color: #333;
-    color: #fff;
-    text-align: center;
-    position: absolute;
-    top: 1rem;
-    width: 100%;
-    max-width: 800px;
-    margin: 0 auto;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 1rem;
-}
-
-header h1 {
-    font-size: 0.9rem;
+    background-color: #FAF7F2;
+    color: #1C1008;
 }
 
 
@@ -595,18 +607,26 @@ header h1 {
 }
 
 .footer {
-    background-color: #222;
-    color: #f8f8f8;
+    background-color: #641414;
+    color: #d88511;
     text-align: center;
-    padding: 1rem 0;
-    margin-top: 2rem;
-    font-size: 1rem;
+    padding: .5rem 0;
+    /* border-top: 2px solid #8B1A1A; */
+    font-size: 2vh;
+}
+
+.footer-chinese {
+    font-family: 'chineseFont';
+    font-size: 3vh;
+    color: #f7eaea;
+    margin-top: 1vh;
+    letter-spacing: 0.01em;
 }
 
 .footer-content {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 0 1rem;
+    /* padding: 0 1rem; */
 }
 
 .social-links a {
@@ -732,7 +752,7 @@ header h1 {
     .content {
         padding-left: 5%;
         padding-right: 5%;
-        padding-top: 15%;
+        padding-top: 10vh;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -779,19 +799,22 @@ header h1 {
         flex-direction: column;
         align-items: center;
         height: auto;
-        
     }
 
     .about-photo,
     .about-text {
         flex: 1;
         width: 100%;
-        /* display:none; */
     }
 
     .about-photo img {
         width: 100%;
         height: auto;
+    }
+
+    .about-text {
+        padding: 2.5rem 2rem;
+        font-size: 3vh;
     }
 
     /* Fix forms */
@@ -814,8 +837,8 @@ header h1 {
 
     /* Info section */
     .info-section {
-        max-width: 95%;
-        padding: 1rem 0.5rem;
+        max-width: 100%;
+        padding: 1.5rem 1.5rem;
     }
 
     .info-item {
@@ -829,7 +852,7 @@ header h1 {
 
     /* Reservation section */
     .reservation {
-        padding: 40px 20px;
+        padding: 48px 28px;
     }
 }
 
@@ -843,6 +866,6 @@ header h1 {
     }
 
     .reservation {
-        padding: 30px 15px;
+        padding: 36px 24px;
     }
 }
