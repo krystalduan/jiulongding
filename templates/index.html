@@ -10,18 +10,15 @@
 </head>
 
 <body>
+    <nav class="home-nav">
+        <ul>
+            <li><a href="{{ url_for('static', filename='hotpot-menu.pdf') }}" target="_blank">Hotpot Menu</a></li>
+            <!-- <li><a href="news.asp">Drinks Menu</a></li> -->
+            <li><a href="#reservation">Book Now</a></li>
+        </ul>
+    </nav>
     <main>
         <section id="home" class="home">
-            <nav class="home-nav">
-                <ul>
-
-                    <li><a href="{{ url_for('static', filename='hotpot-menu.pdf') }}" target="_blank">Hotpot Menu</a>
-                    </li>
-                    <!-- <li><a href="news.asp">Drinks Menu</a></li> -->
-                    <li><a href="#reservation">Book Now</a></li>
-
-                </ul>
-            </nav>
 
             <div class="content">
                 <div class="header-group animate-on-scroll">
@@ -38,7 +35,17 @@
         </section>
         <section class="about-us">
             <div class="about-photo animate-on-scroll">
-                <img src="../static/photos/hotpot.jpeg" alt="Sydney Chinatown Hotpot Restaurant Photo">
+                <div class="jiugongge">
+                    <div class="jiugongge-cell"><img src="../static/photos/9gonggepng/img1.jpeg" alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img src="../static/photos/9gonggepng/img2.jpeg" alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img src="../static/photos/9gonggepng/img3.jpeg" alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img src="../static/photos/9gonggepng/img4.jpeg" alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img src="../static/photos/9gonggepng/img5.jpeg" alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img src="../static/photos/9gonggepng/img6.jpeg" alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img src="../static/photos/9gonggepng/img7.jpeg" alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img src="../static/photos/9gonggepng/img8.jpeg" alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img src="../static/photos/9gonggepng/img9.PNG" alt="Restaurant photo"></div>
+                </div>
             </div>
             <div class="about-text animate-on-scroll">
                 <h2>About Us</h2>
@@ -336,6 +343,22 @@
             const homeSection = document.querySelector('.home');
             if (homeSection && scrolled < window.innerHeight) {
                 homeSection.style.transform = `translateY(${scrolled * 0.5}px)`;
+            }
+
+            // Switch nav from transparent to frosted after scrolling past hero
+            const nav = document.querySelector('.home-nav');
+            if (nav) {
+                if (scrolled > 720 ) {
+                    nav.style.background = 'rgba(83, 12, 4, 0.717)';
+                    nav.style.backdropFilter = 'blur(10px)';
+                    nav.style.webkitBackdropFilter = 'blur(10px)';
+                    nav.style.boxShadow = '0 2px 12px rgba(0,0,0,0.15)';
+                } else {
+                    nav.style.background = 'transparent';
+                    nav.style.backdropFilter = '';
+                    nav.style.webkitBackdropFilter = '';
+                    nav.style.boxShadow = '';
+                }
             }
         });
 

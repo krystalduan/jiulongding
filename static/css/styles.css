@@ -101,49 +101,51 @@ body {
     animation-delay: 0.7s;
 }
 
-/* Left-aligned horizontal navbar */
+/* Navbar — transparent over hero, frosted after scroll */
 .home-nav {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    z-index: 10;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    background: transparent;
+    transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+.home-nav.nav-scrolled {
+    background: #8B1A1A;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.15);
 }
 
 .home-nav ul {
     list-style-type: none;
     margin: 0;
-    padding: 0;
+    padding: 0 24px;
     display: flex;
-    /* Makes items horizontal */
-    /* float: left; */
+    justify-content: flex-end;
+    align-items: center;
+    height: 56px;
 }
 
 .home-nav li {
-    float: right;
+    display: flex;
+    align-items: center;
 }
 
 .home-nav li a {
     display: block;
-    color: white;
+    color: #efefef;
     text-decoration: none;
-    padding: 12px 20px;
-    /* background: rgba(255, 255, 255, 0.1); */
-    /* border-right: 1px solid rgba(255, 255, 255, 0.2); */
-    transition: all 0.3s ease;
+    padding: 8px 20px;
+    transition: color 0.2s ease;
     font-weight: 500;
-    font-size: 30px;
-    /* backdrop-filter: blur(10px); */
+    font-size: 1.1rem;
 }
 
-
-
-/* Hover effects */
 .home-nav li a:hover {
-    /* background: rgba(255, 255, 255, 0.2); */
-    /* transform: translateY(-2px); */
     color: rgb(241, 188, 88);
-    
-    /* Change color on hover, optional */
     text-decoration: underline;
 }
 
@@ -267,7 +269,7 @@ body {
 }
 
 .home a:hover {
-    color: rgb(205, 105, 4);
+    color:  rgb(241, 188, 88);
     /* Change color on hover, optional */
     text-decoration: underline;
     /* Add underline on hover, optional */
@@ -284,19 +286,29 @@ body {
 
 .about-photo {
     flex: 1.5;
-    /* Takes up half the screen */
-    background-color:#e6c0ac ;
-    /* Fallback color if image doesn't load #252121*/
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    background-color: #e6c0ac;
+    padding: 3vmin;
+    box-sizing: border-box;
 }
 
-.about-photo img {
-    width: 80%;
-    height: 80%;
+.jiugongge {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    gap: 9px;
+    width: 100%;
+    height: 100%;
+}
+
+.jiugongge-cell {
+    overflow: hidden;
+}
+
+.jiugongge-cell img {
+    width: 100%;
+    height: 100%;
     object-fit: cover;
-    /* Ensures the image covers the section */
+    display: block;
 }
 
 .about-text {
@@ -421,7 +433,7 @@ body {
 /* -- .reservation */
 .reservation {
     min-height: 60vh;
-    background-color: #e6c0ac;
+    background-color: #efddd3;
     padding: 60px;
 }
 
