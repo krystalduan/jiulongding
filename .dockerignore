@@ -1,0 +1,20 @@
+# flyctl launch added from .gitignore
+# Credentials
+**/jiulongding-9e2cffe41bca.json
+
+# Environment variables
+**/.env
+
+# Python
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.Python
+**/env
+**/venv
+
+# IDE
+**/.vscode
+**/.idea
+fly.toml

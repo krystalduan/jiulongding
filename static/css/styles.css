@@ -181,7 +181,7 @@ body {
 
 @font-face {
     font-family: 'chineseFont';
-    font-display: block;
+    font-display: swap;
     src: url(../fonts/No.18-ShangShouJiFengShuFaTi-2.woff2) format('woff2'),
     url(../fonts/No.18-ShangShouJiFengShuFaTi-2.ttf);
 }

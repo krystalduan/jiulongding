@@ -18,12 +18,16 @@ import os
 
 load_dotenv()
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(name)s: %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Create Flask app
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY')
+app.secret_key = os.environ['SECRET_KEY']
 
 
 # Google Sheets Setup
@@ -69,16 +73,16 @@ AUTH_HEADER = base64.b64encode(auth_string.encode()).decode()
 try:
     spreadsheet = gc.open("Restaurant Reservations")
     sheet = spreadsheet.worksheet('Master Data')
-    print(f"Successfully connected to sheet: {sheet.title}")
+    logger.info(f"Successfully connected to sheet: {sheet.title}")
 except gspread.exceptions.WorksheetNotFound:
-    print("Error: 'Master Data' worksheet not found")
+    logger.warning("'Master Data' worksheet not found")
     spreadsheet = gc.open("Restaurant Reservations")
     for ws in spreadsheet.worksheets():
-        print(f"  - {ws.title}")
+        logger.info(f"  - {ws.title}")
     sheet = spreadsheet.get_worksheet(0)
-    print(f"Using first sheet as fallback: {sheet.title}")
+    logger.warning(f"Using first sheet as fallback: {sheet.title}")
 except Exception as e:
-    print(f"Error connecting to Google Sheets: {e}")
+    logger.error(f"Error connecting to Google Sheets: {e}")
 
 # =============================================================================
 # BACKGROUND FUNCTIONS FOR SCHEDULER
@@ -90,7 +94,7 @@ def send_today_confirmations_background():
     with app.app_context():
         today = datetime.now(sydney_tz).strftime('%Y-%m-%d')
         result = send_sms_on_date(today, message_type="day_of")
-        print(f"Automatic day-of SMS job completed: {result}")
+        logger.info(f"Automatic day-of SMS job completed: {result}")
 
 
 def send_tomorrow_confirmations_background():
@@ -98,17 +102,17 @@ def send_tomorrow_confirmations_background():
     with app.app_context():
         tomorrow = (datetime.now(sydney_tz) + timedelta(days=1)).strftime('%Y-%m-%d')
         result = send_sms_on_date(tomorrow, message_type="day_before")
-        print(f"Automatic day-before SMS job completed: {result}")
+        logger.info(f"Automatic day-before SMS job completed: {result}")
 
 
 def keep_alive_ping():
-    """Ping self every 10 minutes to prevent spin-down"""
+    """Ping self to prevent Fly.io machine from auto-stopping"""
     try:
-        render_url = os.environ.get('RENDER_URL', 'https://jiulongding.onrender.com')
-        requests.get(f'{render_url}/test', timeout=5)
-        print("✓ Keep-alive ping sent")
+        app_url = os.environ.get('APP_URL', 'https://jiulongding.fly.dev')
+        requests.get(f'{app_url}/health', timeout=5)
+        logger.info("Keep-alive ping sent")
     except Exception as e:
-        print(f"Keep-alive ping failed: {e}")
+        logger.warning(f"Keep-alive ping failed: {e}")
 
 
 # =============================================================================
@@ -118,11 +122,11 @@ def keep_alive_ping():
 sydney_tz = timezone('Australia/Sydney')
 scheduler = BackgroundScheduler(
     timezone=sydney_tz,
-    daemon=False,  # ← Important: don't let it be a daemon
+    daemon=False,
     job_defaults={
-        'coalesce': True,      # Skip missed jobs
-        'max_instances': 1,    # Never run multiple copies
-        'misfire_grace_time': 3600  # forgive up to 1 hour of delays (Render spinup)
+        'coalesce': True,
+        'max_instances': 1,
+        'misfire_grace_time': 3600
     })
 
 # Day-BEFORE reminders at 10 AM (sends to tomorrow's customers)
@@ -132,7 +136,7 @@ scheduler = BackgroundScheduler(
 #     hour=17,  # 10 AM
 #     minute=0,
 #     id='day_before_sms'
-# )›››
+# )
 
 # Day-of reminders at 8:30AM
 scheduler.add_job(
@@ -154,11 +158,11 @@ scheduler.add_job(
 
 try:
     scheduler.start()
-    logger.info("✅ Scheduler started successfully")
+    logger.info("Scheduler started successfully")
     for job in scheduler.get_jobs():
-        logger.info(f"   Job: {job.id} - Next run: {job.next_run_time}")
+        logger.info(f"  Job: {job.id} - Next run: {job.next_run_time}")
 except Exception as e:
-    logger.error(f"❌ Scheduler failed to start: {e}", exc_info=True)
+    logger.error(f"Scheduler failed to start: {e}", exc_info=True)
 
 atexit.register(lambda: scheduler.shutdown())
 
@@ -194,20 +198,15 @@ def clean_phone(phone):
 
     # Handle different Australian number formats
     if cleaned.startswith('614'):
-        # Already has country code: 61412345678
         number = cleaned
     elif cleaned.startswith('04'):
-        # Mobile starting with 04: 0412345678 -> 61412345678
         number = '61' + cleaned[1:]
     elif cleaned.startswith('4') and len(cleaned) == 9:
-        # Mobile without leading 0: 412345678 -> 61412345678
         number = '61' + cleaned
     elif cleaned.startswith('0') and len(cleaned) == 10:
-        # Landline with leading 0: 0212345678 -> 61212345678
         number = '61' + cleaned[1:]
     else:
-        # Invalid format
-        print(f"Warning: Invalid Australian phone format: {phone}")
+        logger.warning(f"Invalid Australian phone format: {phone}")
         return phone
     return number
 
@@ -215,7 +214,7 @@ def clean_phone(phone):
 def send_confirmation_email(customer_email, customer_name, reservation_details):
     """send confirmation email with reservation summary"""
     try:
-        print(f"Attempting to send email to {customer_email}...")
+        logger.info(f"Sending email to {customer_email}")
 
         try:
             date_obj = datetime.strptime(reservation_details['date'], '%Y-%m-%d')
@@ -268,30 +267,27 @@ This is an automated reservation summary."""
             timeout=10
         )
         if response.status_code != 200:
-            print(f"Resend error {response.status_code}: {response.text}")
+            logger.error(f"Resend error {response.status_code}: {response.text}")
             return False
 
-        print(
-            f"Confirmation email sent to {customer_email} )")
+        logger.info(f"Confirmation email sent to {customer_email}")
         return True
 
     except Exception as e:
-        print(f"Error sending email to {customer_email}: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"Error sending email to {customer_email}")
         return False
 
 
 def send_email_async(email, name, reservation_data):
-    """Send email in background - separate function"""
+    """Send email in background thread"""
     try:
         email_sent = send_confirmation_email(email, name, reservation_data)
         if email_sent:
-            print(f"✅ Background email sent successfully to {email}")
+            logger.info(f"Background email sent successfully to {email}")
         else:
-            print(f"❌ Background email failed for {email}")
+            logger.warning(f"Background email failed for {email}")
     except Exception as e:
-        print(f"❌ Background email error: {str(e)}")
+        logger.error(f"Background email error: {str(e)}")
 
 
 def create_date_sheet(name, phone, email, people, date, time, dish_type, notes, reservation_id):
@@ -317,7 +313,7 @@ def create_date_sheet(name, phone, email, people, date, time, dish_type, notes, 
                               dish_type, notes, "Pending", reservation_id or ""])
 
     except Exception as e:
-        print(f"Error creating/updating date sheet: {e}")
+        logger.error(f"Error creating/updating date sheet: {e}")
 
 
 def send_sms(to_number, message_text, custom_ref=None):
@@ -338,21 +334,21 @@ def send_sms(to_number, message_text, custom_ref=None):
     }
     if custom_ref:
         payload["messages"][0]["custom_ref"] = custom_ref
-    print("DEBUG Payload:", json.dumps(payload, indent=2))
+    logger.debug("SMS payload: %s", json.dumps(payload))
 
     try:
         response = requests.post(
             API_URL, headers=headers, json=payload, timeout=10)
 
         if response.status_code != 200:
-            print(f"Error {response.status_code}: {response.text}")
+            logger.error(f"SMS API error {response.status_code}: {response.text}")
             return None
 
         response_data = response.json()
-        print("SMS API Response:", json.dumps(response_data, indent=2))
+        logger.debug("SMS API response: %s", json.dumps(response_data))
         return response_data
     except Exception as e:
-        print(f"Error sending SMS: {e}")
+        logger.error(f"Error sending SMS: {e}")
         return None
 
 
@@ -378,12 +374,7 @@ def send_sms_on_date(target_date, message_type="day_of"):
             time = row[1]
             people = row[2]
             phone = row[3]
-            email = row[4]
-            date = row[5]
-            dish = row[6]
-            notes = row[7]
             confirmed = row[8]
-            reservation_id = row[9]
 
             if confirmed == "Pending" and phone:
 
@@ -397,16 +388,14 @@ def send_sms_on_date(target_date, message_type="day_of"):
                 result = send_sms(phone, sms_message,
                                   custom_ref=f"{message_type}_{datetime.now().timestamp()}")
 
-                print(f"sms sent: {name}")
+                logger.info(f"SMS sent to {name}")
                 timestamp = datetime.now().strftime('%H:%M')
                 if result:
                     sent_count += 1
-
                     batch_updates.append({
                         'range': f'K{i}',
                         'values': [[f"{message_type} SMS sent {timestamp}"]]
                     })
-
                 else:
                     failed_count += 1
                     batch_updates.append({
@@ -422,21 +411,20 @@ def send_sms_on_date(target_date, message_type="day_of"):
         return f"Error sending SMS for {target_date}: {e}"
 
 
-
+# =============================================================================
 # CUSTOMER-FACING ROUTES
+# =============================================================================
 
 @app.route("/")
 def home():
     """Customer reservation form"""
-    print("HOME PAGE LOADED")
     return render_template("index.html")
 
 
 @app.route("/submit_reservation", methods=["POST"])
 def submit_reservation_route():
     """Handle customer reservation submission"""
-    print("=== FORM SUBMITTED TO /submit_reservation ===")
-    print(f"Form data received: {dict(request.form)}")
+    logger.info("Reservation form submitted")
 
     # Get form data
     name = request.form.get("name")
@@ -451,19 +439,17 @@ def submit_reservation_route():
     # Validate required fields
     if not name or not email or not phone or not people or not date or not time:
         error = "All fields are required. Please fill out the entire form."
-        print("VALIDATION FAILED - Missing fields")
+        logger.warning("Reservation submission failed - missing fields")
         return render_template("index.html", error=error)
 
     reservation_id = generate_reservation_id()
-    # save to master data sheet
     sheet.append_row(
-        [reservation_id, name, date, time,  people, dish_type, phone, email, notes])
+        [reservation_id, name, date, time, people, dish_type, phone, email, notes])
 
     reservation_data = {
         'name': name, 'phone': phone, 'email': email, 'people': people,
         'date': date, 'time': time, 'dish_type': dish_type, 'notes': notes, 'reservation_id': reservation_id
     }
-    # Create date-specific sheet
     create_date_sheet(name, phone, email, people, date,
                       time, dish_type, notes, reservation_id)
 
@@ -487,7 +473,9 @@ def reservation_success():
     return render_template('reservation_success.html', **reservation_data)
 
 
+# =============================================================================
 # STAFF DASHBOARD ROUTES
+# =============================================================================
 
 def require_staff_auth(f):
     from functools import wraps
@@ -510,9 +498,8 @@ def staff_login():
 @app.route("/staff/login", methods=["POST"])
 def staff_login_post():
     password = request.form.get('password')
-    staff_password = os.environ.get('STAFF_PASSWORD', '123')
+    staff_password = os.environ['STAFF_PASSWORD']
     if password == staff_password:
-        # Store authentication in session
         session['staff_authenticated'] = True
         session.permanent = True
         return redirect('/staff/dashboard')
@@ -569,7 +556,6 @@ def get_reservations(date):
                 }
                 reservations.append(reservation)
 
-        # Sort by time
         def parse_time(time_str):
             try:
                 return datetime.strptime(time_str, '%H:%M').time()
@@ -597,8 +583,6 @@ def get_reservations(date):
             'reservations': []
         })
 
-# API to update status
-
 
 @app.route("/staff/api/update_status", methods=['POST'])
 @require_staff_auth
@@ -612,7 +596,6 @@ def update_reservation_status():
         sheet_name = date.replace('/', '-')
         date_sheet = spreadsheet.worksheet(sheet_name)
 
-        # Update the confirmed status (column I = 9)
         date_sheet.update_cell(row_number, 9, new_status)
 
         return jsonify({
@@ -626,6 +609,7 @@ def update_reservation_status():
             'message': f'Error updating reservation: {str(e)}'
         })
 
+
 # =============================================================================
 # ADMIN/SMS ROUTES
 # =============================================================================
@@ -635,7 +619,6 @@ def update_reservation_status():
 @require_staff_auth
 def admin_panel():
     """Admin panel for manual SMS and dashboard access"""
-
     today = datetime.now().strftime('%Y-%m-%d')
     return f"""
     <html>
@@ -646,7 +629,7 @@ def admin_panel():
             body {{ font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }}
             .container {{ max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; }}
             h2 {{ color: #d32f2f; text-align: center; }}
-            .btn {{ display: inline-block; padding: 12px 24px; margin: 10px; text-decoration: none; 
+            .btn {{ display: inline-block; padding: 12px 24px; margin: 10px; text-decoration: none;
                     border-radius: 8px; font-weight: bold; text-align: center; min-width: 200px; }}
             .btn-primary {{ background: #2196F3; color: white; }}
             .btn-success {{ background: #4CAF50; color: white; }}
@@ -656,13 +639,12 @@ def admin_panel():
     </head>
     <body>
         <div class="container">
-            <h2>🍲 JLD Restaurant Admin Panel</h2>
+            <h2>JLD Restaurant Admin Panel</h2>
             <p style="text-align: center;"><strong>Today: {today}</strong></p>
-            
             <div style="text-align: center;">
-                <a href="/staff/dashboard" class="btn btn-primary">📊 Staff Dashboard</a><br>
-                <a href="/send_today_confirmations" class="btn btn-success">📱 Send Today's SMS</a><br>
-                <a href="/send_tomorrow_confirmations" class="btn btn-warning">📅 Send Tomorrow's SMS</a>
+                <a href="/staff/dashboard" class="btn btn-primary">Staff Dashboard</a><br>
+                <a href="/send_today_confirmations" class="btn btn-success">Send Today's SMS</a><br>
+                <a href="/send_tomorrow_confirmations" class="btn btn-warning">Send Tomorrow's SMS</a>
             </div>
         </div>
     </body>
@@ -674,20 +656,19 @@ def admin_panel():
 @require_staff_auth
 def send_today_confirmations():
     """Manual trigger for day-of SMS"""
-
     today = datetime.now(sydney_tz).strftime('%Y-%m-%d')
     result = send_sms_on_date(today, message_type="day_of")
-    return f"<h2>SMS Results for {today}</h2><p>{result}</p><a href='/admin'>← Back to Admin</a>"
+    return f"<h2>SMS Results for {today}</h2><p>{result}</p><a href='/admin'>Back to Admin</a>"
 
 
 @app.route("/send_tomorrow_confirmations")
 @require_staff_auth
 def send_tomorrow_confirmations():
     """Manual trigger for day-before SMS"""
-
     tomorrow = (datetime.now(sydney_tz) + timedelta(days=1)).strftime('%Y-%m-%d')
     result = send_sms_on_date(tomorrow, message_type="day_before")
-    return f"<h2>SMS Results for {tomorrow}</h2><p>{result}</p><a href='/admin'>← Back to Admin</a>"
+    return f"<h2>SMS Results for {tomorrow}</h2><p>{result}</p><a href='/admin'>Back to Admin</a>"
+
 
 # =============================================================================
 # SMS REPLY ROUTES (WebHook)
@@ -697,16 +678,21 @@ def send_tomorrow_confirmations():
 @app.route('/sms-webhook', methods=['POST'])
 def receive_sms():
     """Webhook endpoint to receive inbound SMS"""
+    webhook_secret = os.environ.get('SMS_WEBHOOK_SECRET')
+    if webhook_secret:
+        provided = request.args.get('secret') or request.headers.get('X-Webhook-Secret', '')
+        if provided != webhook_secret:
+            logger.warning("SMS webhook rejected: invalid secret")
+            return jsonify({"status": "unauthorized"}), 401
+
     try:
         data = request.get_json()
-        print("Received webhook data:", json.dumps(data, indent=2))
+        logger.debug("Received SMS webhook: %s", json.dumps(data))
 
         sender = data.get('sender')
         message_text = data.get('message')
         received_at = data.get('received_at')
-        original_custom_ref = data.get('original_custom_ref')
 
-        # Process the reply with date detection
         success = process_sms_reply_smart(sender, message_text, received_at)
 
         if success:
@@ -715,47 +701,33 @@ def receive_sms():
             return jsonify({"status": "warning", "message": "No matching reservation"}), 200
 
     except Exception as e:
-        print(f"Error processing webhook: {e}")
+        logger.error(f"Error processing webhook: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
 def get_reservation_date_from_sms(received_at):
-    """
-    Determine which date sheet to check based on SMS data
-    Returns a list of possible sheet names to check
-    """
-
-    # Method 2: Use received_at as fallback
+    """Determine which date sheet to check based on received_at timestamp"""
     if received_at:
         try:
-            # Parse ISO format: "2024-09-30T14:35:00Z"
             received_datetime = datetime.fromisoformat(
                 received_at.replace('Z', '+00:00'))
-
-            # Check same day (for day_of messages)
-            same_day = received_datetime.strftime('%Y-%m-%d')
-            return same_day
-
+            return received_datetime.strftime('%Y-%m-%d')
         except Exception as e:
-            print(f"Error parsing received_at: {e}")
-
+            logger.warning(f"Error parsing received_at: {e}")
     return None
 
 
 def process_sms_reply_smart(phone_number, message, received_at):
     """
     Smart SMS reply processing - goes directly to the correct date sheet
-    No phone index needed!
     """
     try:
+        logger.debug(f"Looking for reservation with phone: {phone_number}")
 
-        print(f"Looking for reservation with phone: {phone_number}")
-
-        # Get possible date sheets to check
         parsed_date = get_reservation_date_from_sms(received_at)
-        print(f"the parsed date is {parsed_date}")
+        logger.debug(f"Parsed date: {parsed_date}")
         if not parsed_date:
-            print("⚠ Could not determine reservation date")
+            logger.warning("Could not determine reservation date from SMS")
             log_unknown_reply(phone_number, message, received_at)
             return False
 
@@ -764,64 +736,49 @@ def process_sms_reply_smart(phone_number, message, received_at):
             cell = date_sheet.find(phone_number, in_column=4)
 
             if cell:
-                print(f"✓ Found reservation in {date_sheet}, row {cell.row}")
+                logger.info(f"Found reservation in {parsed_date}, row {cell.row}")
 
-                # Get the row data
                 row_data = date_sheet.row_values(cell.row)
                 name = row_data[0] if len(row_data) > 0 else "Unknown"
 
-                # Format reply timestamp
                 reply_timestamp = datetime.fromisoformat(
                     received_at.replace('Z', '+00:00')
                 ).strftime('%Y-%m-%d %H:%M')
                 full_reply = f"{reply_timestamp}: {message}"
-                print(full_reply + "full reply")
 
-                # Determine status based on message
                 message_upper = message.strip().upper()
 
                 if message_upper in ['Y', 'YES', 'YEP', 'YUP', 'CONFIRM', 'CONFIRMED']:
                     status = "Confirmed"
                     method = "Confirmed by SMS"
-                    print(f"✓ Reservation CONFIRMED for {name}")
+                    logger.info(f"Reservation CONFIRMED for {name}")
                 elif message_upper in ['N', 'NO', 'NOPE', 'CANCEL', 'CANCELLED']:
                     status = "Cancelled"
                     method = "Cancelled by SMS"
-                    print(f"✗ Reservation CANCELLED for {name}")
+                    logger.info(f"Reservation CANCELLED for {name}")
                 else:
                     status = f"Reply needs review: {message}"
                     method = "SMS"
-                    print(f"⚠ Reply needs manual review: {message}")
-                # Batch update both columns
+                    logger.warning(f"SMS reply needs manual review: {message}")
+
                 date_sheet.batch_update([
-                    {
-                        'range': f'I{cell.row}',  # Column I: Confirmed status
-                        'values': [[status]]
-                    },
-                    {
-                        'range': f'K{cell.row}',  # Column L: SMS Reply
-                        'values': [[full_reply]]
-                    },
-                    {
-                        'range': f'L{cell.row}',
-                        'values': [[method]]
-                    }
+                    {'range': f'I{cell.row}', 'values': [[status]]},
+                    {'range': f'K{cell.row}', 'values': [[full_reply]]},
+                    {'range': f'L{cell.row}', 'values': [[method]]}
                 ])
 
-                print(f"✓ Updated reservation for {name}")
+                logger.info(f"Updated reservation for {name}")
                 return True
 
         except gspread.WorksheetNotFound:
-            print(f"Sheet not found: {date_sheet}")
+            logger.warning(f"Sheet not found: {parsed_date}")
         except Exception as e:
-            print(f"Error checking sheet {date_sheet}: {e}")
+            logger.error(f"Error checking sheet {parsed_date}: {e}")
 
         log_unknown_reply(phone_number, message, received_at)
         return False
     except Exception as e:
-        print(f"Error processing SMS reply: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception("Error processing SMS reply")
         return False
 
 
@@ -844,126 +801,20 @@ def log_unknown_reply(phone_number, message, received_at):
             received_at,
             "Needs manual review"
         ])
-        print(f"Logged unknown reply to 'Unknown Replies' sheet")
+        logger.info("Logged unknown SMS reply to 'Unknown Replies' sheet")
 
     except Exception as e:
-        print(f"Error logging unknown reply: {e}")
+        logger.error(f"Error logging unknown reply: {e}")
 
 
 # =============================================================================
-# TEST ROUTES
+# HEALTH CHECK
 # =============================================================================
 
+@app.route("/health")
+def health():
+    return "OK", 200
 
-@app.route("/test")
-def test():
-    print("TEST ROUTE ACCESSED!")
-    return "Test page works!"
-
-
-@app.route("/test-auth")
-def test_auth():
-    """Test authentication without redirects"""
-    auth = request.authorization
-    staff_password = os.environ.get('STAFF_PASSWORD', 'jld2024')
-
-    if not auth:
-        return f"No auth provided. Expected password: {staff_password}", 401
-
-    if auth.password == staff_password:
-        return f"✅ Authentication successful! Username: {auth.username}, Password: {auth.password}"
-    else:
-        return f"❌ Wrong password. Got: {auth.password}, Expected: {staff_password}", 401
-
-
-@app.route("/test-scheduler")
-def test_scheduler():
-    """Test scheduler status"""
-    jobs = scheduler.get_jobs()
-    job_info = []
-    for job in jobs:
-        job_info.append({
-            'id': job.id,
-            'next_run': str(job.next_run_time),
-            'function': job.func.__name__
-        })
-
-    return jsonify({
-        'scheduler_running': scheduler.running,
-        'jobs': job_info,
-        'current_time': datetime.now().isoformat()
-    })
-
-
-@app.route("/scheduler-status")
-def scheduler_status():
-    """Check if scheduler is running"""
-    jobs = scheduler.get_jobs()
-    job_list = []
-    for job in jobs:
-        job_list.append({
-            'id': job.id,
-            'next_run': str(job.next_run_time),
-            'function': job.func.__name__
-        })
-
-    return jsonify({
-        'scheduler_running': scheduler.running,
-        'total_jobs': len(jobs),
-        'jobs': job_list,
-        'current_time': datetime.now().isoformat()
-    })
-
-
-@app.route("/test-api")
-def test_api():
-    """Test if API routing works at all"""
-    print("🔍 test-api route called!")
-    return jsonify({
-        'success': True,
-        'message': 'API routing works!',
-        'timestamp': datetime.now().isoformat()
-    })
-
-
-@app.route("/staff/api/test")
-def test_staff_api():
-    """Test if staff API routing works"""
-    print("🔍 staff API test route called!")
-    return jsonify({
-        'success': True,
-        'message': 'Staff API routing works!',
-        'auth_header': request.headers.get('Authorization', 'None')
-    })
-
-
-@app.route("/test-env")
-def test_env():
-    return f"""
-    EMAIL_ADDRESS: {os.environ.get('EMAIL_ADDRESS', 'NOT FOUND')}
-    EMAIL_PASSWORD: {'***' if os.environ.get('EMAIL_PASSWORD') else 'NOT FOUND'}
-    API_USERNAME: {os.environ.get('API_USERNAME', 'NOT FOUND')}
-    """
-
-@app.route("/test-email")
-def test_email():
-    try:
-        response = requests.post(
-            "https://api.resend.com/emails",
-            headers={"Authorization": f"Bearer {os.environ.get('RESEND_API_KEY')}"},
-            json={
-                "from": "JLD Hotpot <reservations@jiulongding.com.au>",
-                "to": [os.environ.get('EMAIL_ADDRESS')],
-                "subject": "JLD Email Test",
-                "text": "Test email from JLD reservation system."
-            },
-            timeout=10
-        )
-        if response.status_code == 200:
-            return "✅ Resend email sent successfully!"
-        return f"❌ Resend error {response.status_code}: {response.text}"
-    except Exception as e:
-        return f"❌ Email error: {e}"
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))

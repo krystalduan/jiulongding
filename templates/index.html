@@ -5,6 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JLD Chongqing Hotpot</title>
+    <link rel="preload" href="{{ url_for('static', filename='fonts/No.18-ShangShouJiFengShuFaTi-2.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{{ url_for('static', filename='fonts/EBGaramond-VariableFont_wght.ttf') }}" as="font" type="font/truetype" crossorigin>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
 </head>
@@ -36,15 +38,15 @@
         <section class="about-us">
             <div class="about-photo animate-on-scroll">
                 <div class="jiugongge">
-                    <div class="jiugongge-cell"><img src="../static/photos/9gonggepng/img1.jpeg" alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img src="../static/photos/9gonggepng/img2.jpeg" alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img src="../static/photos/9gonggepng/img3.jpeg" alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img src="../static/photos/9gonggepng/img4.jpeg" alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img src="../static/photos/9gonggepng/img5.jpeg" alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img src="../static/photos/9gonggepng/img6.jpeg" alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img src="../static/photos/9gonggepng/img7.jpeg" alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img src="../static/photos/9gonggepng/img8.jpeg" alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img src="../static/photos/9gonggepng/img9.PNG" alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img1.jpeg" alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img2.jpeg" alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img3.jpeg" alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img4.jpeg" alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img5.jpeg" alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img6.jpeg" alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img7.jpeg" alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img8.jpeg" alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img9.PNG" alt="Restaurant photo"></div>
                 </div>
             </div>
             <div class="about-text animate-on-scroll">
@@ -154,37 +156,6 @@
                         <label for="date">日期 Date</label>
                         <input type="date" id="date" name="date" required>
                     </div>
-                    <!-- Can only book one month ahead  -->
-                    <script>
-                        // Get the current date
-                        const currentDate = new Date();
-                        const currentHour = currentDate.getHours();
-
-                        // Determine minimum bookable date
-                        let minDate = new Date(currentDate);
-
-                        // If it's after 10 AM, prevent same-day bookings
-                        if (currentHour >= 10) {
-                            minDate.setDate(minDate.getDate() + 1); // Start from tomorrow
-                        }
-
-                        // Format the minimum date as YYYY-MM-DD
-                        const formattedMinDate = minDate.toISOString().split('T')[0];
-
-                        // Calculate the date one month ahead
-                        const oneMonthAhead = new Date(currentDate);
-                        oneMonthAhead.setMonth(oneMonthAhead.getMonth() + 1);
-
-                        // Format the one month ahead date as YYYY-MM-DD for the `max` attribute
-                        const formattedMaxDate = oneMonthAhead.toISOString().split('T')[0];
-
-                        // Set the `min` and `max` attributes of the date picker
-                        const datePicker = document.getElementById('date');
-                        datePicker.setAttribute('min', formattedCurrentDate);
-                        datePicker.setAttribute('max', formattedMaxDate);
-
-
-                    </script>
                     <div class="form-group">
                         <label for="time">时间 Time</label>
                         <select id="time" name="time" required>
@@ -302,15 +273,17 @@
 
             // Set up date picker constraints
             const currentDate = new Date();
-            const formattedCurrentDate = currentDate.toISOString().split('T')[0];
+            const minDate = new Date(currentDate);
+            if (currentDate.getHours() >= 10) {
+                minDate.setDate(minDate.getDate() + 1);
+            }
             const oneMonthAhead = new Date(currentDate);
             oneMonthAhead.setMonth(oneMonthAhead.getMonth() + 1);
-            const formattedMaxDate = oneMonthAhead.toISOString().split('T')[0];
 
             const datePicker = document.getElementById('date');
             if (datePicker) {
-                datePicker.setAttribute('min', formattedCurrentDate);
-                datePicker.setAttribute('max', formattedMaxDate);
+                datePicker.setAttribute('min', minDate.toISOString().split('T')[0]);
+                datePicker.setAttribute('max', oneMonthAhead.toISOString().split('T')[0]);
             }
 
             // Add form interaction animations
