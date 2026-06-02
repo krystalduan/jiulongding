@@ -1,3 +1,10 @@
+@font-face {
+    font-family: 'chineseFont';
+    font-display: swap;
+    src: url(../fonts/chineseFont-subset.woff2) format('woff2');
+    unicode-range: U+4E5D, U+9F99, U+9F0E, U+91CD, U+5E86, U+706B, U+9505;
+}
+
 html,
 body {
     margin: 0;
