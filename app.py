@@ -15,6 +15,7 @@ import requests
 import base64
 import json
 import os
+import secrets
 
 load_dotenv()
 
@@ -418,13 +419,22 @@ def send_sms_on_date(target_date, message_type="day_of"):
 @app.route("/")
 def home():
     """Customer reservation form"""
-    return render_template("index.html")
+    form_token = secrets.token_hex(16)
+    session['form_token'] = form_token
+    return render_template("index.html", form_token=form_token)
 
 
 @app.route("/submit_reservation", methods=["POST"])
 def submit_reservation_route():
     """Handle customer reservation submission"""
     logger.info("Reservation form submitted")
+
+    # Validate idempotency token to prevent duplicate submissions
+    submitted_token = request.form.get('form_token')
+    session_token = session.pop('form_token', None)
+    if not submitted_token or submitted_token != session_token:
+        logger.warning("Duplicate or invalid form submission blocked")
+        return redirect(url_for('home'))
 
     # Get form data
     name = request.form.get("name")

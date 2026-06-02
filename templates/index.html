@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JLD Chongqing Hotpot</title>
-    <link rel="preload" href="{{ url_for('static', filename='fonts/No.18-ShangShouJiFengShuFaTi-2.woff2') }}" as="font" type="font/woff2" crossorigin>
-    <link rel="preload" href="{{ url_for('static', filename='fonts/EBGaramond-VariableFont_wght.ttf') }}" as="font" type="font/truetype" crossorigin>
+    <link rel="preload" href="{{ url_for('static', filename='fonts/chineseFont-subset.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{{ url_for('static', filename='fonts/EBGaramond-VariableFont_wght.woff2') }}" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
 </head>
@@ -121,7 +121,8 @@
             </div>
             {% endif %}
 
-            <form action="/submit_reservation" method="POST" class="reservation-form animate-on-scroll">
+            <form action="/submit_reservation" method="POST" class="reservation-form animate-on-scroll" id="reservation-form">
+                <input type="hidden" name="form_token" value="{{ form_token }}">
                 <div class="form-row">
                     <div class="form-group">
                         <label for="name"> 姓名 Full Name</label>
@@ -308,6 +309,14 @@
                 item.addEventListener('mouseleave', function () {
                     this.style.transform = 'translateY(0) scale(1)';
                 });
+            });
+
+            // Prevent duplicate submissions: disable button after first click
+            const reservationForm = document.getElementById('reservation-form');
+            const submitBtn = reservationForm.querySelector('.submit-btn');
+            reservationForm.addEventListener('submit', function () {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Submitting...';
             });
         });
 
