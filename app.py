@@ -413,6 +413,36 @@ def send_sms_on_date(target_date, message_type="day_of"):
 
 
 # =============================================================================
+# SEO ROUTES
+# =============================================================================
+
+@app.before_request
+def redirect_old_domain():
+    if request.host == 'jiulongding.onrender.com':
+        new_url = request.url.replace('jiulongding.onrender.com', 'jiulongding.au', 1)
+        return redirect(new_url, code=301)
+
+
+@app.route('/robots.txt')
+def robots_txt():
+    content = "User-agent: *\nAllow: /\nSitemap: https://jiulongding.au/sitemap.xml\n"
+    return content, 200, {'Content-Type': 'text/plain'}
+
+
+@app.route('/sitemap.xml')
+def sitemap():
+    xml = '''<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://jiulongding.au/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>'''
+    return xml, 200, {'Content-Type': 'application/xml'}
+
+
+# =============================================================================
 # CUSTOMER-FACING ROUTES
 # =============================================================================
 
