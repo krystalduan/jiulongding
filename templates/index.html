@@ -22,7 +22,7 @@
         <ul>
             <li><a href="{{ url_for('static', filename='hotpot-menu.pdf') }}" target="_blank">Hotpot Menu</a></li>
             <!-- <li><a href="news.asp">Drinks Menu</a></li> -->
-            <li><a href="#reservation">Book Now</a></li>
+            <li><a href="/book">Book Now</a></li>
         </ul>
     </nav>
     <main>
@@ -36,7 +36,7 @@
                 <div class="subheader-group animate-on-scroll">
                     <h3 class="english stagger-3">JiuLongDing</h3>
                     <h4 class="english stagger-4">Chinese Restaurant</h4>
-                    <a class="english" href="#reservation">Book Now &darr;</a>
+                    <a class="english" href="/book">Book Now &darr;</a>
                 </div>
 
             </div>
@@ -280,17 +280,42 @@
 
             // Set up date picker constraints
             const currentDate = new Date();
-            const minDate = new Date(currentDate);
-            if (currentDate.getHours() >= 10) {
-                minDate.setDate(minDate.getDate() + 1);
-            }
+            const today = currentDate.toISOString().split('T')[0];
             const oneMonthAhead = new Date(currentDate);
             oneMonthAhead.setMonth(oneMonthAhead.getMonth() + 1);
 
             const datePicker = document.getElementById('date');
             if (datePicker) {
-                datePicker.setAttribute('min', minDate.toISOString().split('T')[0]);
+                datePicker.setAttribute('min', today);
                 datePicker.setAttribute('max', oneMonthAhead.toISOString().split('T')[0]);
+                datePicker.addEventListener('change', function () {
+                    if (this.value === today) {
+                        filterTimesForToday();
+                    } else {
+                        resetTimeOptions();
+                    }
+                });
+            }
+
+            function filterTimesForToday() {
+                const now = new Date();
+                const currentMinutes = now.getHours() * 60 + now.getMinutes();
+                const timeSelect = document.getElementById('time');
+                let anyAvailable = false;
+                Array.from(timeSelect.options).forEach(option => {
+                    if (!option.value) return;
+                    const [h, m] = option.value.split(':').map(Number);
+                    const available = (h * 60 + m) - currentMinutes >= 120;
+                    option.disabled = !available;
+                    if (available) anyAvailable = true;
+                });
+                if (timeSelect.value && timeSelect.options[timeSelect.selectedIndex].disabled) {
+                    timeSelect.value = '';
+                }
+            }
+
+            function resetTimeOptions() {
+                Array.from(document.getElementById('time').options).forEach(o => o.disabled = false);
             }
 
             // Add form interaction animations

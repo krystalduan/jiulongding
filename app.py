@@ -413,6 +413,23 @@ def send_sms_on_date(target_date, message_type="day_of"):
 
 
 # =============================================================================
+# CRON ENDPOINT
+# =============================================================================
+
+@app.route('/api/send-sms-cron')
+def send_sms_cron():
+    secret = request.args.get('secret', '')
+    cron_secret = os.environ.get('CRON_SECRET', '')
+    if not cron_secret or secret != cron_secret:
+        return jsonify({'status': 'unauthorized'}), 401
+
+    today = datetime.now(sydney_tz).strftime('%Y-%m-%d')
+    result = send_sms_on_date(today, message_type="day_of")
+    logger.info(f"Cron SMS job: {result}")
+    return jsonify({'status': 'ok', 'result': result})
+
+
+# =============================================================================
 # SEO ROUTES
 # =============================================================================
 
@@ -438,6 +455,11 @@ def sitemap():
     <changefreq>monthly</changefreq>
     <priority>1.0</priority>
   </url>
+  <url>
+    <loc>https://jiulongding.au/book</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
 </urlset>'''
     return xml, 200, {'Content-Type': 'application/xml'}
 
@@ -448,10 +470,16 @@ def sitemap():
 
 @app.route("/")
 def home():
-    """Customer reservation form"""
     form_token = secrets.token_hex(16)
     session['form_token'] = form_token
     return render_template("index.html", form_token=form_token)
+
+
+@app.route("/book")
+def book():
+    form_token = secrets.token_hex(16)
+    session['form_token'] = form_token
+    return render_template("book.html", form_token=form_token)
 
 
 @app.route("/submit_reservation", methods=["POST"])

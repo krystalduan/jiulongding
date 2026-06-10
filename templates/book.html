@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Book a Table | JiuLongDing Chongqing Hotpot Sydney</title>
+    <meta name="description" content="Book a table at JiuLongDing Chongqing Hotpot in Haymarket, Sydney. Reserve online — 71 Dixon Street (up the stairs), Haymarket NSW 2000.">
+    <link rel="canonical" href="https://jiulongding.au/book">
+    <meta property="og:title" content="Book a Table | JiuLongDing Chongqing Hotpot">
+    <meta property="og:description" content="Reserve your table at JiuLongDing Chongqing Hotpot — 71 Dixon Street, Haymarket NSW 2000.">
+    <meta property="og:url" content="https://jiulongding.au/book">
+    <meta property="og:type" content="restaurant">
+    <link rel="preload" href="{{ url_for('static', filename='fonts/chineseFont-subset.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{{ url_for('static', filename='fonts/EBGaramond-VariableFont_wght.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <style>
+        .home-nav { background: rgba(83, 12, 4, 0.95); }
+    </style>
+</head>
+
+<body>
+    <nav class="home-nav">
+        <ul>
+            <li><a href="/">&#8592; Home</a></li>
+            <li><a href="{{ url_for('static', filename='hotpot-menu.pdf') }}" target="_blank">Hotpot Menu</a></li>
+        </ul>
+    </nav>
+
+    <main>
+        <section id="reservation" class="reservation" style="padding-top: 5rem;">
+            <div class="animate-on-scroll">
+                <div class="title">Reservation Enquiries</div>
+                <p class="sub-title">Book your table quickly and easily below</p>
+            </div>
+
+            {% if error %}
+            <div class="error-message">{{ error }}</div>
+            {% endif %}
+
+            <form action="/submit_reservation" method="POST" class="reservation-form animate-on-scroll" id="reservation-form">
+                <input type="hidden" name="form_token" value="{{ form_token }}">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="name">姓名 Full Name</label>
+                        <input type="text" id="name" name="name" placeholder="John Smith" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="email">邮箱 Email Address</label>
+                        <input type="email" id="email" name="email" placeholder="john.smith@gmail.com" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="phone">电话号码 Phone Number</label>
+                        <input type="tel" id="phone" name="phone" placeholder="0412345678" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="people">人位 Number of People</label>
+                        <select id="people" name="people" required>
+                            <option value="">Select party size</option>
+                            <option value="1-2">1-2</option>
+                            <option value="3-4">3-4</option>
+                            <option value="4-6">4-6</option>
+                            <option value="7-10">7-10</option>
+                            <option value="10+">10+</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="date">日期 Date</label>
+                        <input type="date" id="date" name="date" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="time">时间 Time</label>
+                        <select id="time" name="time" required>
+                            <option value="">Select time</option>
+                            <option value="12:00">12:00 PM</option>
+                            <option value="12:30">12:30 PM</option>
+                            <option value="13:00">1:00 PM</option>
+                            <option value="13:30">1:30 PM</option>
+                            <option value="18:00">6:00 PM</option>
+                            <option value="18:30">6:30 PM</option>
+                            <option value="19:00">7:00 PM</option>
+                            <option value="19:30">7:30 PM</option>
+                            <option value="20:00">8:00 PM</option>
+                            <option value="20:30">8:30 PM</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="dish-type">菜类型 Type of Dish</label>
+                        <select id="dish-type" name="dish-type" required>
+                            <option value="">Type of Dish</option>
+                            <option value="大火锅">大火锅 Hotpot - Shared Pot</option>
+                            <option value="小火锅">小火锅 Hotpot - Individual Pot</option>
+                            <option value="炒菜">炒菜或烤鱼 Stir-Fry</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="notes">Notes</label>
+                        <input type="text" id="notes" name="notes" placeholder="e.g. high chairs, dietary requirements">
+                    </div>
+                </div>
+                <button type="submit" class="submit-btn">SUBMIT</button>
+            </form>
+        </section>
+
+        <footer class="footer">
+            <div class="footer-content">
+                <p>&copy; JiuLongDing Chongqing Hotpot Sydney. All rights reserved.</p>
+                <p class="footer-chinese">九龙鼎重庆火锅</p>
+            </div>
+        </footer>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('visible', 'fade-in-up');
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, { threshold: 0.1 });
+
+            document.querySelectorAll('.animate-on-scroll').forEach(el => observer.observe(el));
+
+            const currentDate = new Date();
+            const today = currentDate.toISOString().split('T')[0];
+            const oneMonthAhead = new Date(currentDate);
+            oneMonthAhead.setMonth(oneMonthAhead.getMonth() + 1);
+
+            const datePicker = document.getElementById('date');
+            if (datePicker) {
+                datePicker.setAttribute('min', today);
+                datePicker.setAttribute('max', oneMonthAhead.toISOString().split('T')[0]);
+                datePicker.addEventListener('change', function () {
+                    if (this.value === today) {
+                        filterTimesForToday();
+                    } else {
+                        resetTimeOptions();
+                    }
+                });
+            }
+
+            function filterTimesForToday() {
+                const now = new Date();
+                const currentMinutes = now.getHours() * 60 + now.getMinutes();
+                const timeSelect = document.getElementById('time');
+                Array.from(timeSelect.options).forEach(option => {
+                    if (!option.value) return;
+                    const [h, m] = option.value.split(':').map(Number);
+                    option.disabled = (h * 60 + m) - currentMinutes < 120;
+                });
+                if (timeSelect.value && timeSelect.options[timeSelect.selectedIndex].disabled) {
+                    timeSelect.value = '';
+                }
+            }
+
+            function resetTimeOptions() {
+                Array.from(document.getElementById('time').options).forEach(o => o.disabled = false);
+            }
+
+            const formInputs = document.querySelectorAll('input, select');
+            formInputs.forEach(input => {
+                input.addEventListener('focus', function () {
+                    this.parentElement.style.transform = 'scale(1.02)';
+                    this.parentElement.style.transition = 'transform 0.2s ease';
+                });
+                input.addEventListener('blur', function () {
+                    this.parentElement.style.transform = 'scale(1)';
+                });
+            });
+
+            const reservationForm = document.getElementById('reservation-form');
+            const submitBtn = reservationForm.querySelector('.submit-btn');
+            reservationForm.addEventListener('submit', function () {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Submitting...';
+            });
+        });
+    </script>
+</body>
+
+</html>
