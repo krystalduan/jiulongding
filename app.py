@@ -4,6 +4,7 @@ from flask import Flask, render_template, request, redirect, url_for, jsonify, s
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from functools import wraps
 import logging
 from pytz import timezone
 import threading
@@ -25,121 +26,91 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Create Flask app
-
 app = Flask(__name__)
 app.secret_key = os.environ['SECRET_KEY']
 
+# =============================================================================
+# GOOGLE SHEETS — lazy connection
+# =============================================================================
 
-# Google Sheets Setup
 SCOPE = ["https://spreadsheets.google.com/feeds",
          "https://www.googleapis.com/auth/drive"]
 
-# Handle credentials from environment or file
 google_creds = os.environ.get('GOOGLE_CREDENTIALS')
 if google_creds:
-    # Production: use environment variable
     import tempfile
     with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
         f.write(google_creds)
         creds_file = f.name
-    CREDENTIALS = ServiceAccountCredentials.from_json_keyfile_name(
-        creds_file, SCOPE)
-    def cleanup_creds():
+    CREDENTIALS = ServiceAccountCredentials.from_json_keyfile_name(creds_file, SCOPE)
+    def _cleanup_creds():
         try:
             os.unlink(creds_file)
         except OSError:
             pass
-    atexit.register(cleanup_creds)
+    atexit.register(_cleanup_creds)
 else:
-    # Development: use local file
     CREDENTIALS = ServiceAccountCredentials.from_json_keyfile_name(
         "jiulongding-9e2cffe41bca.json", SCOPE)
 
 gc = gspread.authorize(CREDENTIALS)
 
-# SMS API setup
-API_URL = "https://api.mobilemessage.com.au/v1/messages"
+_sheets_lock = threading.Lock()
+_spreadsheet = None
+_sheet = None
 
-# SMS API setup credentials
+def get_sheets():
+    global _spreadsheet, _sheet
+    if _sheet is not None:
+        return _spreadsheet, _sheet
+    with _sheets_lock:
+        if _sheet is not None:
+            return _spreadsheet, _sheet
+        try:
+            sp = gc.open("Restaurant Reservations")
+            sh = sp.worksheet('Master Data')
+            logger.info(f"Connected to Google Sheets: {sh.title}")
+        except gspread.exceptions.WorksheetNotFound:
+            sp = gc.open("Restaurant Reservations")
+            sh = sp.get_worksheet(0)
+            logger.warning(f"'Master Data' not found, using: {sh.title}")
+        _spreadsheet, _sheet = sp, sh
+    return _spreadsheet, _sheet
+
+
+def _warmup_sheets():
+    try:
+        get_sheets()
+    except Exception as e:
+        logger.warning(f"Sheets warmup failed: {e}")
+
+# =============================================================================
+# SMS API
+# =============================================================================
+
+API_URL = "https://api.mobilemessage.com.au/v1/messages"
 API_USERNAME = os.environ.get('API_USERNAME')
 API_PASSWORD = os.environ.get('API_PASSWORD')
-
-
-# Encode credentials in base64
 auth_string = f"{API_USERNAME}:{API_PASSWORD}"
 AUTH_HEADER = base64.b64encode(auth_string.encode()).decode()
 
-# Connect to Google Sheets
-try:
-    spreadsheet = gc.open("Restaurant Reservations")
-    sheet = spreadsheet.worksheet('Master Data')
-    logger.info(f"Successfully connected to sheet: {sheet.title}")
-except gspread.exceptions.WorksheetNotFound:
-    logger.warning("'Master Data' worksheet not found")
-    spreadsheet = gc.open("Restaurant Reservations")
-    for ws in spreadsheet.worksheets():
-        logger.info(f"  - {ws.title}")
-    sheet = spreadsheet.get_worksheet(0)
-    logger.warning(f"Using first sheet as fallback: {sheet.title}")
-except Exception as e:
-    logger.error(f"Error connecting to Google Sheets: {e}")
-
 # =============================================================================
-# BACKGROUND FUNCTIONS FOR SCHEDULER
-# =============================================================================
-
-
-def send_today_confirmations_background():
-    """Background job for day-of SMS reminders"""
-    with app.app_context():
-        today = datetime.now(sydney_tz).strftime('%Y-%m-%d')
-        result = send_sms_on_date(today, message_type="day_of")
-        logger.info(f"Automatic day-of SMS job completed: {result}")
-
-
-def send_tomorrow_confirmations_background():
-    """Background job for day-before SMS reminders"""
-    with app.app_context():
-        tomorrow = (datetime.now(sydney_tz) + timedelta(days=1)).strftime('%Y-%m-%d')
-        result = send_sms_on_date(tomorrow, message_type="day_before")
-        logger.info(f"Automatic day-before SMS job completed: {result}")
-
-
-def keep_alive_ping():
-    """Ping self to prevent Fly.io machine from auto-stopping"""
-    try:
-        app_url = os.environ.get('APP_URL', 'https://jiulongding.fly.dev')
-        requests.get(f'{app_url}/health', timeout=5)
-        logger.info("Keep-alive ping sent")
-    except Exception as e:
-        logger.warning(f"Keep-alive ping failed: {e}")
-
-
-# =============================================================================
-# SCHEDULER SETUP
+# SCHEDULER — day-of SMS at 8:30 AM Sydney time (fired via external cron)
 # =============================================================================
 
 sydney_tz = timezone('Australia/Sydney')
 scheduler = BackgroundScheduler(
     timezone=sydney_tz,
     daemon=False,
-    job_defaults={
-        'coalesce': True,
-        'max_instances': 1,
-        'misfire_grace_time': 3600
-    })
+    job_defaults={'coalesce': True, 'max_instances': 1, 'misfire_grace_time': 3600}
+)
 
-# Day-BEFORE reminders at 10 AM (sends to tomorrow's customers)
-# scheduler.add_job(
-#     func=send_tomorrow_confirmations_background,
-#     trigger="cron",
-#     hour=17,  # 10 AM
-#     minute=0,
-#     id='day_before_sms'
-# )
+def send_today_confirmations_background():
+    with app.app_context():
+        today = datetime.now(sydney_tz).strftime('%Y-%m-%d')
+        result = send_sms_on_date(today, message_type="day_of")
+        logger.info(f"Automatic day-of SMS job completed: {result}")
 
-# Day-of reminders at 8:30AM
 scheduler.add_job(
     func=send_today_confirmations_background,
     trigger=CronTrigger(hour=8, minute=30, timezone=sydney_tz),
@@ -148,20 +119,9 @@ scheduler.add_job(
     replace_existing=True
 )
 
-scheduler.add_job(
-    func=keep_alive_ping,
-    trigger=CronTrigger(minute='*/10', timezone=sydney_tz),
-    id='keep_alive',
-    name='Keep Alive Ping',
-    replace_existing=True
-)
-
-
 try:
     scheduler.start()
-    logger.info("Scheduler started successfully")
-    for job in scheduler.get_jobs():
-        logger.info(f"  Job: {job.id} - Next run: {job.next_run_time}")
+    logger.info("Scheduler started")
 except Exception as e:
     logger.error(f"Scheduler failed to start: {e}", exc_info=True)
 
@@ -171,60 +131,39 @@ atexit.register(lambda: scheduler.shutdown())
 # HELPER FUNCTIONS
 # =============================================================================
 
-
-def is_logged_in():
-    return session.get('staff_authenticated') == True
-
-
 def generate_reservation_id():
-    """Generate sequential ID by counting existing reservations"""
+    _, sheet = get_sheets()
     all_data = sheet.get_all_values()
-    existing_reservations = len(all_data) - 1  # Subtract header row
-
-    if existing_reservations < 0:
-        existing_reservations = 0
-
-    return existing_reservations + 1
+    return max(len(all_data) - 1, 0) + 1
 
 
 def clean_phone(phone):
-    """
-    Clean and standardise Australian phone numbers to format: 61423456789
-    """
     if not phone:
         return None
-
-    # Remove all non-digit characters (spaces, dashes, parentheses, etc.)
     cleaned = re.sub(r'\D', '', str(phone))
-
-    # Handle different Australian number formats
     if cleaned.startswith('614'):
-        number = cleaned
+        return cleaned
     elif cleaned.startswith('04'):
-        number = '61' + cleaned[1:]
+        return '61' + cleaned[1:]
     elif cleaned.startswith('4') and len(cleaned) == 9:
-        number = '61' + cleaned
+        return '61' + cleaned
     elif cleaned.startswith('0') and len(cleaned) == 10:
-        number = '61' + cleaned[1:]
+        return '61' + cleaned[1:]
     else:
         logger.warning(f"Invalid Australian phone format: {phone}")
         return phone
-    return number
 
 
 def send_confirmation_email(customer_email, customer_name, reservation_details):
-    """send confirmation email with reservation summary"""
     try:
         logger.info(f"Sending email to {customer_email}")
-
         try:
             date_obj = datetime.strptime(reservation_details['date'], '%Y-%m-%d')
             formatted_date = date_obj.strftime('%A, %B %d, %Y')
-        except:
+        except Exception:
             formatted_date = reservation_details['date']
 
         subject = f"Booking Summary - {formatted_date} at {reservation_details['time']}"
-
         text_body = f"""Dear {customer_name},
 
 Thank you for choosing JiuLongDing Chongqing Hotpot!
@@ -260,7 +199,7 @@ This is an automated reservation summary."""
             "https://api.resend.com/emails",
             headers={"Authorization": f"Bearer {os.environ.get('RESEND_API_KEY')}"},
             json={
-                "from": "JLD Hotpot <reservations@jiulongding.com.au>",
+                "from": "JLD Hotpot <reservations@jiulongding.au>",
                 "to": [customer_email],
                 "subject": subject,
                 "text": text_body
@@ -274,79 +213,67 @@ This is an automated reservation summary."""
         logger.info(f"Confirmation email sent to {customer_email}")
         return True
 
-    except Exception as e:
+    except Exception:
         logger.exception(f"Error sending email to {customer_email}")
         return False
 
 
 def send_email_async(email, name, reservation_data):
-    """Send email in background thread"""
     try:
-        email_sent = send_confirmation_email(email, name, reservation_data)
-        if email_sent:
-            logger.info(f"Background email sent successfully to {email}")
+        if send_confirmation_email(email, name, reservation_data):
+            logger.info(f"Background email sent to {email}")
         else:
             logger.warning(f"Background email failed for {email}")
     except Exception as e:
-        logger.error(f"Background email error: {str(e)}")
+        logger.error(f"Background email error: {e}")
 
 
 def create_date_sheet(name, phone, email, people, date, time, dish_type, notes, reservation_id):
-    """Create a new sheet for the date and add booking details"""
+    spreadsheet, _ = get_sheets()
     try:
         sheet_name = str(date).replace('/', '-')
-
-        date_sheet = None
         try:
             date_sheet = spreadsheet.worksheet(sheet_name)
         except gspread.WorksheetNotFound:
-            date_sheet = spreadsheet.add_worksheet(
-                title=sheet_name, rows="100", cols="11")
-            headers = ["Name", "Time", "People", "Phone", "Email",  "Date",
+            date_sheet = spreadsheet.add_worksheet(title=sheet_name, rows="100", cols="12")
+            headers = ["Name", "Time", "People", "Phone", "Email", "Date",
                        "Dish Type", "Notes", "Confirmed", "Reservation ID", "SMS Reply", "Confirmation Method"]
             date_sheet.append_row(headers)
             date_sheet.format("A1:L1", {
                 "textFormat": {"bold": True},
                 "backgroundColor": {"red": 0.2, "green": 0.6, "blue": 0.9}
             })
-
         date_sheet.append_row([name, time, people, phone, email, date,
-                              dish_type, notes, "Pending", reservation_id or ""])
-
+                                dish_type, notes, "Pending", reservation_id or ""])
     except Exception as e:
         logger.error(f"Error creating/updating date sheet: {e}")
 
 
 def send_sms(to_number, message_text, custom_ref=None):
-    """Send SMS using Mobile Message API"""
-    sender = "61485900180"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Basic {AUTH_HEADER}"
-    }
     payload = {
-        "messages": [
-            {
-                "to": to_number,
-                "message": message_text,
-                "sender": sender
-            }
-        ]
+        "messages": [{
+            "to": to_number,
+            "message": message_text,
+            "sender": "61485900180"
+        }]
     }
     if custom_ref:
         payload["messages"][0]["custom_ref"] = custom_ref
-    logger.debug("SMS payload: %s", json.dumps(payload))
+
+    logger.info("SMS payload: %s", json.dumps(payload))
 
     try:
         response = requests.post(
-            API_URL, headers=headers, json=payload, timeout=10)
-
+            API_URL,
+            headers={"Content-Type": "application/json", "Authorization": f"Basic {AUTH_HEADER}"},
+            json=payload,
+            timeout=10
+        )
         if response.status_code != 200:
             logger.error(f"SMS API error {response.status_code}: {response.text}")
             return None
-
         response_data = response.json()
-        logger.debug("SMS API response: %s", json.dumps(response_data))
+        logger.info("SMS API response: %s", json.dumps(response_data))
         return response_data
     except Exception as e:
         logger.error(f"Error sending SMS: {e}")
@@ -354,10 +281,9 @@ def send_sms(to_number, message_text, custom_ref=None):
 
 
 def send_sms_on_date(target_date, message_type="day_of"):
-    """Helper function to send SMS for any date"""
+    spreadsheet, _ = get_sheets()
     try:
         sheet_name = target_date.replace('/', '-')
-
         try:
             date_sheet = spreadsheet.worksheet(sheet_name)
         except gspread.WorksheetNotFound:
@@ -371,38 +297,25 @@ def send_sms_on_date(target_date, message_type="day_of"):
         for i, row in enumerate(all_data[1:], start=2):
             if len(row) < 10:
                 continue
-            name = row[0]
-            time = row[1]
-            people = row[2]
-            phone = row[3]
+            name, time, people, phone = row[0], row[1], row[2], row[3]
             confirmed = row[8]
 
             if confirmed == "Pending" and phone:
-
                 sms_message = (
                     f"Hi {name}! This is a reminder of your reservation today "
                     f"at {time} for {people} people.\n"
                     f"Reply Y to confirm or N to cancel.\n"
                     f"Location: 71 Dixon St (up the stairs), Haymarket - JLD Hotpot"
                 )
-
                 result = send_sms(phone, sms_message,
                                   custom_ref=f"{message_type}_{datetime.now().timestamp()}")
-
-                logger.info(f"SMS sent to {name}")
                 timestamp = datetime.now().strftime('%H:%M')
                 if result:
                     sent_count += 1
-                    batch_updates.append({
-                        'range': f'K{i}',
-                        'values': [[f"{message_type} SMS sent {timestamp}"]]
-                    })
+                    batch_updates.append({'range': f'K{i}', 'values': [[f"{message_type} SMS sent {timestamp}"]]})
                 else:
                     failed_count += 1
-                    batch_updates.append({
-                        'range': f'K{i}',
-                        'values': [[f"{message_type} SMS failed {timestamp}"]]
-                    })
+                    batch_updates.append({'range': f'K{i}', 'values': [[f"{message_type} SMS failed {timestamp}"]]})
 
         if batch_updates:
             date_sheet.batch_update(batch_updates)
@@ -410,7 +323,6 @@ def send_sms_on_date(target_date, message_type="day_of"):
 
     except Exception as e:
         return f"Error sending SMS for {target_date}: {e}"
-
 
 # =============================================================================
 # CRON ENDPOINT
@@ -422,12 +334,10 @@ def send_sms_cron():
     cron_secret = os.environ.get('CRON_SECRET', '')
     if not cron_secret or secret != cron_secret:
         return jsonify({'status': 'unauthorized'}), 401
-
     today = datetime.now(sydney_tz).strftime('%Y-%m-%d')
     result = send_sms_on_date(today, message_type="day_of")
     logger.info(f"Cron SMS job: {result}")
     return jsonify({'status': 'ok', 'result': result})
-
 
 # =============================================================================
 # SEO ROUTES
@@ -442,8 +352,7 @@ def redirect_old_domain():
 
 @app.route('/robots.txt')
 def robots_txt():
-    content = "User-agent: *\nAllow: /\nSitemap: https://jiulongding.au/sitemap.xml\n"
-    return content, 200, {'Content-Type': 'text/plain'}
+    return "User-agent: *\nAllow: /\nSitemap: https://jiulongding.au/sitemap.xml\n", 200, {'Content-Type': 'text/plain'}
 
 
 @app.route('/sitemap.xml')
@@ -463,7 +372,6 @@ def sitemap():
 </urlset>'''
     return xml, 200, {'Content-Type': 'application/xml'}
 
-
 # =============================================================================
 # CUSTOMER-FACING ROUTES
 # =============================================================================
@@ -472,6 +380,7 @@ def sitemap():
 def home():
     form_token = secrets.token_hex(16)
     session['form_token'] = form_token
+    threading.Thread(target=_warmup_sheets, daemon=True).start()
     return render_template("index.html", form_token=form_token)
 
 
@@ -479,22 +388,20 @@ def home():
 def book():
     form_token = secrets.token_hex(16)
     session['form_token'] = form_token
+    threading.Thread(target=_warmup_sheets, daemon=True).start()
     return render_template("book.html", form_token=form_token)
 
 
 @app.route("/submit_reservation", methods=["POST"])
 def submit_reservation_route():
-    """Handle customer reservation submission"""
     logger.info("Reservation form submitted")
 
-    # Validate idempotency token to prevent duplicate submissions
     submitted_token = request.form.get('form_token')
     session_token = session.pop('form_token', None)
     if not submitted_token or submitted_token != session_token:
         logger.warning("Duplicate or invalid form submission blocked")
         return redirect(url_for('home'))
 
-    # Get form data
     name = request.form.get("name")
     email = request.form.get("email")
     phone = clean_phone(request.form.get("phone"))
@@ -504,28 +411,22 @@ def submit_reservation_route():
     dish_type = request.form.get('dish-type')
     notes = request.form.get('notes', "")
 
-    # Validate required fields
     if not name or not email or not phone or not people or not date or not time:
-        error = "All fields are required. Please fill out the entire form."
         logger.warning("Reservation submission failed - missing fields")
-        return render_template("index.html", error=error)
+        return render_template("index.html", error="All fields are required. Please fill out the entire form.")
 
+    _, sheet = get_sheets()
     reservation_id = generate_reservation_id()
-    sheet.append_row(
-        [reservation_id, name, date, time, people, dish_type, phone, email, notes])
+    sheet.append_row([reservation_id, name, date, time, people, dish_type, phone, email, notes])
 
     reservation_data = {
         'name': name, 'phone': phone, 'email': email, 'people': people,
-        'date': date, 'time': time, 'dish_type': dish_type, 'notes': notes, 'reservation_id': reservation_id
+        'date': date, 'time': time, 'dish_type': dish_type, 'notes': notes,
+        'reservation_id': reservation_id
     }
-    create_date_sheet(name, phone, email, people, date,
-                      time, dish_type, notes, reservation_id)
+    create_date_sheet(name, phone, email, people, date, time, dish_type, notes, reservation_id)
 
-    email_thread = threading.Thread(
-        target=send_email_async,
-        args=(email, name, reservation_data)
-    )
-    email_thread.start()
+    threading.Thread(target=send_email_async, args=(email, name, reservation_data)).start()
 
     session['last_reservation'] = reservation_data
     return redirect(url_for('reservation_success'))
@@ -533,83 +434,64 @@ def submit_reservation_route():
 
 @app.route("/reservation_success")
 def reservation_success():
-    """Customer reservation confirmation page"""
     reservation_data = session.pop('last_reservation', None)
     if not reservation_data:
         return redirect('/')
-
     return render_template('reservation_success.html', **reservation_data)
 
-
 # =============================================================================
-# STAFF DASHBOARD ROUTES
+# STAFF ROUTES
 # =============================================================================
 
 def require_staff_auth(f):
-    from functools import wraps
-
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not session.get('staff_authenticated'):
             return redirect('/staff/login')
         return f(*args, **kwargs)
-
     return decorated_function
 
 
 @app.route("/staff")
 def staff_login():
-    """Staff login page"""
     return render_template('staff_login.html')
 
 
 @app.route("/staff/login", methods=["POST"])
 def staff_login_post():
     password = request.form.get('password')
-    staff_password = os.environ['STAFF_PASSWORD']
-    if password == staff_password:
+    if password == os.environ['STAFF_PASSWORD']:
         session['staff_authenticated'] = True
         session.permanent = True
         return redirect('/staff/dashboard')
-    else:
-        return render_template('staff_login.html', error="Invalid password"), 401
+    return render_template('staff_login.html', error="Invalid password"), 401
 
 
 @app.route("/staff/dashboard")
 @require_staff_auth
 def staff_dashboard():
-    today = datetime.now().strftime('%Y-%m-%d')
-    return render_template('dashboard.html', default_date=today)
+    return render_template('dashboard.html', default_date=datetime.now().strftime('%Y-%m-%d'))
 
 
 @app.route("/staff/api/reservations/<date>")
 @require_staff_auth
 def get_reservations(date):
+    spreadsheet, _ = get_sheets()
     try:
         sheet_name = date.replace('/', '-')
-
         try:
             date_sheet = spreadsheet.worksheet(sheet_name)
         except gspread.WorksheetNotFound:
-            return jsonify({
-                'success': False,
-                'message': f'No reservations found for {date}',
-                'reservations': []
-            })
+            return jsonify({'success': False, 'message': f'No reservations found for {date}', 'reservations': []})
 
         all_data = date_sheet.get_all_values()
-
         if len(all_data) <= 1:
-            return jsonify({
-                'success': False,
-                'message': f'No reservations found for {date}',
-                'reservations': []
-            })
+            return jsonify({'success': False, 'message': f'No reservations found for {date}', 'reservations': []})
 
         reservations = []
         for i, row in enumerate(all_data[1:], start=2):
             if len(row) >= 9:
-                reservation = {
+                reservations.append({
                     'row_number': i,
                     'name': row[0] if len(row) > 0 else '',
                     'time': row[1] if len(row) > 1 else '',
@@ -621,17 +503,15 @@ def get_reservations(date):
                     'notes': row[7] if len(row) > 7 else '',
                     'confirmed': row[8] if len(row) > 8 else 'Pending',
                     'reservation_id': row[9] if len(row) > 9 else ''
-                }
-                reservations.append(reservation)
+                })
 
         def parse_time(time_str):
-            try:
-                return datetime.strptime(time_str, '%H:%M').time()
-            except:
+            for fmt in ('%H:%M', '%I:%M %p'):
                 try:
-                    return datetime.strptime(time_str, '%I:%M %p').time()
-                except:
-                    return datetime.strptime('12:00', '%H:%M').time()
+                    return datetime.strptime(time_str, fmt).time()
+                except ValueError:
+                    continue
+            return datetime.strptime('12:00', '%H:%M').time()
 
         reservations.sort(key=lambda x: parse_time(x['time']))
 
@@ -645,51 +525,31 @@ def get_reservations(date):
         })
 
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error loading reservations: {str(e)}',
-            'reservations': []
-        })
+        return jsonify({'success': False, 'message': f'Error loading reservations: {str(e)}', 'reservations': []})
 
 
 @app.route("/staff/api/update_status", methods=['POST'])
 @require_staff_auth
 def update_reservation_status():
+    spreadsheet, _ = get_sheets()
     try:
         data = request.get_json()
-        date = data.get('date')
-        row_number = data.get('row_number')
-        new_status = data.get('status')
-
-        sheet_name = date.replace('/', '-')
+        sheet_name = data.get('date').replace('/', '-')
         date_sheet = spreadsheet.worksheet(sheet_name)
-
-        date_sheet.update_cell(row_number, 9, new_status)
-
-        return jsonify({
-            'success': True,
-            'message': f'Reservation updated to {new_status}'
-        })
-
+        date_sheet.update_cell(data.get('row_number'), 9, data.get('status'))
+        return jsonify({'success': True, 'message': f"Reservation updated to {data.get('status')}"})
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error updating reservation: {str(e)}'
-        })
-
+        return jsonify({'success': False, 'message': f'Error updating reservation: {str(e)}'})
 
 # =============================================================================
-# ADMIN/SMS ROUTES
+# ADMIN ROUTES
 # =============================================================================
-
 
 @app.route("/admin")
 @require_staff_auth
 def admin_panel():
-    """Admin panel for manual SMS and dashboard access"""
     today = datetime.now().strftime('%Y-%m-%d')
-    return f"""
-    <html>
+    return f"""<html>
     <head>
         <title>JLD Admin Panel</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -716,14 +576,12 @@ def admin_panel():
             </div>
         </div>
     </body>
-    </html>
-    """
+    </html>"""
 
 
 @app.route("/send_today_confirmations")
 @require_staff_auth
 def send_today_confirmations():
-    """Manual trigger for day-of SMS"""
     today = datetime.now(sydney_tz).strftime('%Y-%m-%d')
     result = send_sms_on_date(today, message_type="day_of")
     return f"<h2>SMS Results for {today}</h2><p>{result}</p><a href='/admin'>Back to Admin</a>"
@@ -732,20 +590,16 @@ def send_today_confirmations():
 @app.route("/send_tomorrow_confirmations")
 @require_staff_auth
 def send_tomorrow_confirmations():
-    """Manual trigger for day-before SMS"""
     tomorrow = (datetime.now(sydney_tz) + timedelta(days=1)).strftime('%Y-%m-%d')
     result = send_sms_on_date(tomorrow, message_type="day_before")
     return f"<h2>SMS Results for {tomorrow}</h2><p>{result}</p><a href='/admin'>Back to Admin</a>"
 
-
 # =============================================================================
-# SMS REPLY ROUTES (WebHook)
+# SMS WEBHOOK
 # =============================================================================
-
 
 @app.route('/sms-webhook', methods=['POST'])
 def receive_sms():
-    """Webhook endpoint to receive inbound SMS"""
     webhook_secret = os.environ.get('SMS_WEBHOOK_SECRET')
     if webhook_secret:
         provided = request.args.get('secret') or request.headers.get('X-Webhook-Secret', '')
@@ -755,45 +609,26 @@ def receive_sms():
 
     try:
         data = request.get_json()
-        logger.debug("Received SMS webhook: %s", json.dumps(data))
-
-        sender = data.get('sender')
-        message_text = data.get('message')
-        received_at = data.get('received_at')
-
-        success = process_sms_reply_smart(sender, message_text, received_at)
-
-        if success:
-            return jsonify({"status": "success"}), 200
-        else:
-            return jsonify({"status": "warning", "message": "No matching reservation"}), 200
-
+        success = process_sms_reply_smart(data.get('sender'), data.get('message'), data.get('received_at'))
+        return jsonify({"status": "success" if success else "warning"}), 200
     except Exception as e:
         logger.error(f"Error processing webhook: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
 def get_reservation_date_from_sms(received_at):
-    """Determine which date sheet to check based on received_at timestamp"""
     if received_at:
         try:
-            received_datetime = datetime.fromisoformat(
-                received_at.replace('Z', '+00:00'))
-            return received_datetime.strftime('%Y-%m-%d')
+            return datetime.fromisoformat(received_at.replace('Z', '+00:00')).strftime('%Y-%m-%d')
         except Exception as e:
             logger.warning(f"Error parsing received_at: {e}")
     return None
 
 
 def process_sms_reply_smart(phone_number, message, received_at):
-    """
-    Smart SMS reply processing - goes directly to the correct date sheet
-    """
+    spreadsheet, _ = get_sheets()
     try:
-        logger.debug(f"Looking for reservation with phone: {phone_number}")
-
         parsed_date = get_reservation_date_from_sms(received_at)
-        logger.debug(f"Parsed date: {parsed_date}")
         if not parsed_date:
             logger.warning("Could not determine reservation date from SMS")
             log_unknown_reply(phone_number, message, received_at)
@@ -805,24 +640,19 @@ def process_sms_reply_smart(phone_number, message, received_at):
 
             if cell:
                 logger.info(f"Found reservation in {parsed_date}, row {cell.row}")
-
                 row_data = date_sheet.row_values(cell.row)
-                name = row_data[0] if len(row_data) > 0 else "Unknown"
+                name = row_data[0] if row_data else "Unknown"
 
                 reply_timestamp = datetime.fromisoformat(
-                    received_at.replace('Z', '+00:00')
-                ).strftime('%Y-%m-%d %H:%M')
+                    received_at.replace('Z', '+00:00')).strftime('%Y-%m-%d %H:%M')
                 full_reply = f"{reply_timestamp}: {message}"
-
                 message_upper = message.strip().upper()
 
                 if message_upper in ['Y', 'YES', 'YEP', 'YUP', 'CONFIRM', 'CONFIRMED']:
-                    status = "Confirmed"
-                    method = "Confirmed by SMS"
+                    status, method = "Confirmed", "Confirmed by SMS"
                     logger.info(f"Reservation CONFIRMED for {name}")
                 elif message_upper in ['N', 'NO', 'NOPE', 'CANCEL', 'CANCELLED']:
-                    status = "Cancelled"
-                    method = "Cancelled by SMS"
+                    status, method = "Cancelled", "Cancelled by SMS"
                     logger.info(f"Reservation CANCELLED for {name}")
                 else:
                     status = f"Reply needs review: {message}"
@@ -834,7 +664,6 @@ def process_sms_reply_smart(phone_number, message, received_at):
                     {'range': f'K{cell.row}', 'values': [[full_reply]]},
                     {'range': f'L{cell.row}', 'values': [[method]]}
                 ])
-
                 logger.info(f"Updated reservation for {name}")
                 return True
 
@@ -845,35 +674,27 @@ def process_sms_reply_smart(phone_number, message, received_at):
 
         log_unknown_reply(phone_number, message, received_at)
         return False
-    except Exception as e:
+
+    except Exception:
         logger.exception("Error processing SMS reply")
         return False
 
 
 def log_unknown_reply(phone_number, message, received_at):
-    """Log replies that couldn't be matched to a reservation"""
+    spreadsheet, _ = get_sheets()
     try:
         try:
             unknown_sheet = spreadsheet.worksheet("Unknown Replies")
         except gspread.WorksheetNotFound:
-            unknown_sheet = spreadsheet.add_worksheet(
-                "Unknown Replies", rows=100, cols=5)
-            unknown_sheet.update(
-                'A1:E1', [['Timestamp', 'Phone Number', 'Message', 'Received At', 'Status']])
-
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            unknown_sheet = spreadsheet.add_worksheet("Unknown Replies", rows=100, cols=5)
+            unknown_sheet.update('A1:E1', [['Timestamp', 'Phone Number', 'Message', 'Received At', 'Status']])
         unknown_sheet.append_row([
-            timestamp,
-            phone_number,
-            message,
-            received_at,
-            "Needs manual review"
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            phone_number, message, received_at, "Needs manual review"
         ])
-        logger.info("Logged unknown SMS reply to 'Unknown Replies' sheet")
-
+        logger.info("Logged unknown SMS reply")
     except Exception as e:
         logger.error(f"Error logging unknown reply: {e}")
-
 
 # =============================================================================
 # HEALTH CHECK
