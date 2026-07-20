@@ -5,21 +5,40 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Book a Table | JiuLongDing Chongqing Hotpot Sydney</title>
-    <meta name="description" content="Book a table at JiuLongDing Chongqing Hotpot in Haymarket, Sydney. Reserve online — 71 Dixon Street (up the stairs), Haymarket NSW 2000.">
+    <meta name="description"
+        content="Book a table at JiuLongDing Chongqing Hotpot in Haymarket, Sydney. Reserve online — 71 Dixon Street (up the stairs), Haymarket NSW 2000.">
     <link rel="canonical" href="https://jiulongding.au/book">
     <meta property="og:title" content="Book a Table | JiuLongDing Chongqing Hotpot">
-    <meta property="og:description" content="Reserve your table at JiuLongDing Chongqing Hotpot — 71 Dixon Street, Haymarket NSW 2000.">
+    <meta property="og:description"
+        content="Reserve your table at JiuLongDing Chongqing Hotpot — 71 Dixon Street, Haymarket NSW 2000.">
     <meta property="og:url" content="https://jiulongding.au/book">
     <meta property="og:type" content="restaurant">
-    <link rel="preload" href="{{ url_for('static', filename='fonts/chineseFont-subset.woff2') }}" as="font" type="font/woff2" crossorigin>
-    <link rel="preload" href="{{ url_for('static', filename='fonts/EBGaramond-VariableFont_wght.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{{ url_for('static', filename='fonts/chineseFont-subset.woff2') }}" as="font"
+        type="font/woff2" crossorigin>
+    <link rel="preload" href="{{ url_for('static', filename='fonts/EBGaramond-VariableFont_wght.woff2') }}" as="font"
+        type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
     <style>
-        .home-nav { background: rgba(83, 12, 4, 0.95); }
-        body { display: flex; flex-direction: column; min-height: 100vh; }
-        main { flex: 1; display: flex; flex-direction: column; }
-        .reservation { flex: 1; }
+        .home-nav {
+            background: rgba(83, 12, 4, 0.95);
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .reservation {
+            flex: 1;
+        }
     </style>
 </head>
 
@@ -42,7 +61,8 @@
             <div class="error-message">{{ error }}</div>
             {% endif %}
 
-            <form action="/submit_reservation" method="POST" class="reservation-form animate-on-scroll" id="reservation-form">
+            <form action="/submit_reservation" method="POST" class="reservation-form animate-on-scroll"
+                id="reservation-form">
                 <input type="hidden" name="form_token" value="{{ form_token }}">
                 <div class="form-row">
                     <div class="form-group">
@@ -84,6 +104,8 @@
                             <option value="12:30">12:30 PM</option>
                             <option value="13:00">1:00 PM</option>
                             <option value="13:30">1:30 PM</option>
+                            <option value="17:00">5:00 PM</option>
+                            <option value="17:30">5:30 PM</option>
                             <option value="18:00">6:00 PM</option>
                             <option value="18:30">6:30 PM</option>
                             <option value="19:00">7:00 PM</option>

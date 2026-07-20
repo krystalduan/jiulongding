@@ -5,14 +5,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JiuLongDing Chongqing Hotpot | Sydney Haymarket</title>
-    <meta name="description" content="Authentic Chongqing hotpot in Sydney's Haymarket. Book your table online at JiuLongDing (九龙鼎重庆火锅) — 71 Dixon Street, Haymarket NSW 2000.">
+    <meta name="description"
+        content="Authentic Chongqing hotpot in Sydney's Haymarket. Book your table online at JiuLongDing (九龙鼎重庆火锅) — 71 Dixon Street, Haymarket NSW 2000.">
     <link rel="canonical" href="https://jiulongding.au/">
     <meta property="og:title" content="JiuLongDing Chongqing Hotpot | Sydney Haymarket">
-    <meta property="og:description" content="Authentic Chongqing hotpot in Sydney's Haymarket. Book your table online — 71 Dixon Street, Haymarket NSW 2000.">
+    <meta property="og:description"
+        content="Authentic Chongqing hotpot in Sydney's Haymarket. Book your table online — 71 Dixon Street, Haymarket NSW 2000.">
     <meta property="og:url" content="https://jiulongding.au/">
     <meta property="og:type" content="restaurant">
-    <link rel="preload" href="{{ url_for('static', filename='fonts/chineseFont-subset.woff2') }}" as="font" type="font/woff2" crossorigin>
-    <link rel="preload" href="{{ url_for('static', filename='fonts/EBGaramond-VariableFont_wght.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{{ url_for('static', filename='fonts/chineseFont-subset.woff2') }}" as="font"
+        type="font/woff2" crossorigin>
+    <link rel="preload" href="{{ url_for('static', filename='fonts/EBGaramond-VariableFont_wght.woff2') }}" as="font"
+        type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
 </head>
@@ -44,15 +48,24 @@
         <section class="about-us">
             <div class="about-photo animate-on-scroll">
                 <div class="jiugongge">
-                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img1.jpeg" alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img2.jpeg" alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img3.jpeg" alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img4.jpeg" alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img5.jpeg" alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img6.jpeg" alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img7.jpeg" alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img8.jpeg" alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img9.PNG" alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img1.jpeg"
+                            alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img2.jpeg"
+                            alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img3.jpeg"
+                            alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img4.jpeg"
+                            alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img5.jpeg"
+                            alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img6.jpeg"
+                            alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img7.jpeg"
+                            alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img8.jpeg"
+                            alt="Restaurant photo"></div>
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img9.PNG"
+                            alt="Restaurant photo"></div>
                 </div>
             </div>
             <div class="about-text animate-on-scroll">
@@ -127,7 +140,8 @@
             </div>
             {% endif %}
 
-            <form action="/submit_reservation" method="POST" class="reservation-form animate-on-scroll" id="reservation-form">
+            <form action="/submit_reservation" method="POST" class="reservation-form animate-on-scroll"
+                id="reservation-form">
                 <input type="hidden" name="form_token" value="{{ form_token }}">
                 <div class="form-row">
                     <div class="form-group">
@@ -171,6 +185,8 @@
                             <option value="12:30">12:30 PM</option>
                             <option value="13:00">1:00 PM</option>
                             <option value="13:30">1:30 PM</option>
+                            <option value="17:00">5:00 PM</option>
+                            <option value="17:30">5:30 PM</option>
                             <option value="18:00">6:00 PM</option>
                             <option value="18:30">6:30 PM</option>
                             <option value="19:00">7:00 PM</option>
@@ -361,7 +377,7 @@
             // Switch nav from transparent to frosted after scrolling past hero
             const nav = document.querySelector('.home-nav');
             if (nav) {
-                if (scrolled > 720 ) {
+                if (scrolled > 720) {
                     nav.style.background = 'rgba(83, 12, 4, 0.717)';
                     nav.style.backdropFilter = 'blur(10px)';
                     nav.style.webkitBackdropFilter = 'blur(10px)';
