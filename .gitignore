@@ -1,9 +1,21 @@
-# Credentials
+# Credentials — keep these listed explicitly, so nothing relies on the
+# blanket *.json rule below to stay secret.
 jiulongding-9e2cffe41bca.json
+config.json
+*-service-account.json
+*credentials*.json
+*.pem
+*.key
 *.json
 
 # Environment variables
 .env
+.env.*
+!.env.example
+
+# Customer data (never commit real bookings)
+reservations.txt
+*.csv
 
 # Python
 __pycache__/
@@ -13,6 +25,18 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node — this is a Flask project; node_modules here is a mistake
+node_modules/
+npm-debug.log*
+
+# macOS
+.DS_Store
+**/.DS_Store
 
 # IDE
 .vscode/

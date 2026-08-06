@@ -143,21 +143,30 @@
             <form action="/submit_reservation" method="POST" class="reservation-form animate-on-scroll"
                 id="reservation-form">
                 <input type="hidden" name="form_token" value="{{ form_token }}">
+                <!-- Honeypot: hidden from humans, bots fill it in and get discarded -->
+                <div aria-hidden="true"
+                    style="position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;">
+                    <label for="website">Website</label>
+                    <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+                </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label for="name"> 姓名 Full Name</label>
-                        <input type="text" id="name" name="name" placeholder="John Smith" required>
+                        <input type="text" id="name" name="name" placeholder="John Smith" maxlength="80" required>
                     </div>
                     <div class="form-group">
                         <label for="email">邮箱 Email Address</label>
-                        <input type="email" id="email" name="email" placeholder="john.smith@gmail.com" required>
+                        <input type="email" id="email" name="email" placeholder="john.smith@gmail.com"
+                            maxlength="120" required>
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label for="phone">电话号码 Phone Number</label>
-                        <input type="tel" id="phone" name="phone" placeholder="0412345678" required>
-                        <!-- pattern="^(04|\+?614|614)[0-9]{8}$" title="Please enter a valid Australian mobile number (e.g., 0412345678 or +61412345678)"  -->
+                        <input type="tel" id="phone" name="phone" placeholder="0412345678"
+                            pattern="^(?:\+?61[ -]?|0)4[0-9 -]{8,12}$"
+                            title="Please enter a valid Australian mobile number (e.g. 0412345678 or +61412345678)"
+                            required>
 
                     </div>
                     <div class="form-group">
@@ -208,7 +217,7 @@
                     </div>
                     <div class="form-group">
                         <label for="notes">Notes</label>
-                        <input type="text" id="notes" name="notes"
+                        <input type="text" id="notes" name="notes" maxlength="300"
                             placeholder="e.g. high chairs, number of people, kids">
                     </div>
                 </div>

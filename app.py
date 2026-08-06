@@ -28,6 +28,13 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = os.environ['SECRET_KEY']
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SECURE=os.environ.get('FLASK_ENV') != 'development',
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+    MAX_CONTENT_LENGTH=64 * 1024,
+)
 
 # =============================================================================
 # GOOGLE SHEETS — lazy connection
@@ -99,9 +106,12 @@ AUTH_HEADER = base64.b64encode(auth_string.encode()).decode()
 # =============================================================================
 
 sydney_tz = timezone('Australia/Sydney')
+# daemon=True is required: Python joins non-daemon threads *before* running
+# atexit handlers, so a non-daemon scheduler deadlocks the process on shutdown
+# (gunicorn workers never exit, tests and `python3 app.py` hang on Ctrl-C).
 scheduler = BackgroundScheduler(
     timezone=sydney_tz,
-    daemon=False,
+    daemon=True,
     job_defaults={'coalesce': True, 'max_instances': 1, 'misfire_grace_time': 3600}
 )
 
@@ -125,7 +135,15 @@ try:
 except Exception as e:
     logger.error(f"Scheduler failed to start: {e}", exc_info=True)
 
-atexit.register(lambda: scheduler.shutdown())
+def _shutdown_scheduler():
+    try:
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
+    except Exception:
+        pass
+
+
+atexit.register(_shutdown_scheduler)
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -138,20 +156,162 @@ def generate_reservation_id():
 
 
 def clean_phone(phone):
+    """Normalise to 61XXXXXXXXX. Returns None if not a valid AU mobile number."""
     if not phone:
         return None
     cleaned = re.sub(r'\D', '', str(phone))
-    if cleaned.startswith('614'):
-        return cleaned
-    elif cleaned.startswith('04'):
-        return '61' + cleaned[1:]
-    elif cleaned.startswith('4') and len(cleaned) == 9:
-        return '61' + cleaned
-    elif cleaned.startswith('0') and len(cleaned) == 10:
-        return '61' + cleaned[1:]
+    if cleaned.startswith('0011'):
+        cleaned = cleaned[4:]
+    if cleaned.startswith('61'):
+        normalised = cleaned
+    elif cleaned.startswith('0'):
+        normalised = '61' + cleaned[1:]
+    elif len(cleaned) == 9 and cleaned.startswith('4'):
+        normalised = '61' + cleaned
     else:
-        logger.warning(f"Invalid Australian phone format: {phone}")
-        return phone
+        normalised = cleaned
+
+    # AU mobiles: 61 + 4XXXXXXXX  (11 digits total)
+    if re.fullmatch(r'614\d{8}', normalised):
+        return normalised
+
+    logger.warning("Rejected invalid Australian mobile number")
+    return None
+
+# =============================================================================
+# RESERVATION VALIDATION
+# =============================================================================
+
+# Server-side mirrors of the <option> values in index.html / book.html.
+# The browser can only ever submit one of these; anything else is a bot.
+VALID_TIMES = {"12:00", "12:30", "13:00", "13:30",
+               "17:00", "17:30", "18:00", "18:30",
+               "19:00", "19:30", "20:00", "20:30"}
+VALID_PARTY_SIZES = {"1-2", "3-4", "4-6", "7-10", "10+"}
+VALID_DISH_TYPES = {"大火锅", "小火锅", "炒菜"}
+
+MAX_ADVANCE_DAYS = 32      # client picker allows ~1 month; keep server slightly lenient
+MIN_LEAD_MINUTES = 120     # same-day bookings must be at least 2 hours out
+MIN_FILL_SECONDS = 3       # a human cannot complete the form faster than this
+
+EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$')
+NAME_RE = re.compile(r'^[^\d<>{}\[\]\\/|]+$')
+
+MAX_LENGTHS = {'name': 80, 'email': 120, 'notes': 300}
+
+
+def sanitize_for_sheet(value):
+    """Neutralise spreadsheet formula injection (=IMPORTXML(...), @, +, -)."""
+    text = str(value or '').replace('\x00', '').strip()
+    if text and text[0] in ('=', '+', '@', '\t', '\r'):
+        return "'" + text
+    if text.startswith('-') and not re.fullmatch(r'-?\d+(\.\d+)?', text):
+        return "'" + text
+    return text
+
+
+def validate_reservation(form):
+    """Returns (data, error_message). data is None when validation fails."""
+    name = (form.get("name") or "").strip()
+    email = (form.get("email") or "").strip()
+    people = (form.get("people") or "").strip()
+    date = (form.get("date") or "").strip()
+    time = (form.get("time") or "").strip()
+    dish_type = (form.get("dish-type") or "").strip()
+    notes = (form.get("notes") or "").strip()
+    phone = clean_phone(form.get("phone"))
+
+    if not name or not email or not people or not date or not time or not dish_type:
+        return None, "All fields are required. Please fill out the entire form."
+
+    for field, value in (('name', name), ('email', email), ('notes', notes)):
+        if len(value) > MAX_LENGTHS[field]:
+            return None, f"Your {field} is too long."
+
+    if not NAME_RE.match(name):
+        return None, "Please enter a valid name."
+
+    if not EMAIL_RE.match(email) or len(email) < 6:
+        return None, "Please enter a valid email address."
+
+    if not phone:
+        return None, "Please enter a valid Australian mobile number (e.g. 0412345678)."
+
+    if people not in VALID_PARTY_SIZES:
+        return None, "Please select a party size."
+
+    if time not in VALID_TIMES:
+        return None, "Please select a booking time."
+
+    if dish_type not in VALID_DISH_TYPES:
+        return None, "Please select a type of dish."
+
+    try:
+        booking_date = datetime.strptime(date, '%Y-%m-%d').date()
+    except ValueError:
+        return None, "Please select a valid date."
+
+    now = datetime.now(sydney_tz)
+    today = now.date()
+    if booking_date < today:
+        return None, "Bookings cannot be made for a past date."
+    if booking_date > today + timedelta(days=MAX_ADVANCE_DAYS):
+        return None, "Bookings can only be made up to one month in advance."
+
+    if booking_date == today:
+        hour, minute = (int(p) for p in time.split(':'))
+        minutes_until = (hour * 60 + minute) - (now.hour * 60 + now.minute)
+        if minutes_until < MIN_LEAD_MINUTES:
+            return None, "Same-day bookings must be made at least 2 hours ahead. Please call us on +61 423 987 048."
+
+    return {
+        'name': sanitize_for_sheet(name),
+        'email': sanitize_for_sheet(email),
+        'phone': phone,
+        'people': people,
+        'date': date,
+        'time': time,
+        'dish_type': dish_type,
+        'notes': sanitize_for_sheet(notes),
+    }, None
+
+# =============================================================================
+# RATE LIMITING (in-memory, per worker process)
+# =============================================================================
+
+_rate_lock = threading.Lock()
+_rate_hits = {}
+
+
+def secure_equals(a, b):
+    """Timing-safe comparison that tolerates non-ASCII secrets."""
+    return secrets.compare_digest(str(a or '').encode('utf-8'), str(b or '').encode('utf-8'))
+
+
+def client_ip():
+    return (request.headers.get('Fly-Client-IP')
+            or (request.headers.get('X-Forwarded-For', '').split(',')[0].strip())
+            or request.remote_addr
+            or 'unknown')
+
+
+def rate_limited(bucket, limit, window_seconds):
+    """True if this client has exceeded `limit` requests in `window_seconds`."""
+    key = f"{bucket}:{client_ip()}"
+    now = datetime.now().timestamp()
+    cutoff = now - window_seconds
+    with _rate_lock:
+        hits = [t for t in _rate_hits.get(key, []) if t > cutoff]
+        # opportunistic cleanup so the dict cannot grow without bound
+        if len(_rate_hits) > 5000:
+            for k in [k for k, v in _rate_hits.items() if not v or max(v) < cutoff]:
+                _rate_hits.pop(k, None)
+        if len(hits) >= limit:
+            _rate_hits[key] = hits
+            return True
+        hits.append(now)
+        _rate_hits[key] = hits
+        return False
 
 
 def send_confirmation_email(customer_email, customer_name, reservation_details):
@@ -332,7 +492,7 @@ def send_sms_on_date(target_date, message_type="day_of"):
 def send_sms_cron():
     secret = request.args.get('secret', '')
     cron_secret = os.environ.get('CRON_SECRET', '')
-    if not cron_secret or secret != cron_secret:
+    if not cron_secret or not secure_equals(secret, cron_secret):
         return jsonify({'status': 'unauthorized'}), 401
     today = datetime.now(sydney_tz).strftime('%Y-%m-%d')
     result = send_sms_on_date(today, message_type="day_of")
@@ -376,57 +536,79 @@ def sitemap():
 # CUSTOMER-FACING ROUTES
 # =============================================================================
 
+def issue_form_token():
+    token = secrets.token_hex(16)
+    session['form_token'] = token
+    session['form_issued_at'] = datetime.now().timestamp()
+    return token
+
+
 @app.route("/")
 def home():
-    form_token = secrets.token_hex(16)
-    session['form_token'] = form_token
     threading.Thread(target=_warmup_sheets, daemon=True).start()
-    return render_template("index.html", form_token=form_token)
+    return render_template("index.html", form_token=issue_form_token())
 
 
 @app.route("/book")
 def book():
-    form_token = secrets.token_hex(16)
-    session['form_token'] = form_token
     threading.Thread(target=_warmup_sheets, daemon=True).start()
-    return render_template("book.html", form_token=form_token)
+    return render_template("book.html", form_token=issue_form_token())
+
+
+def reservation_error(message, status=400):
+    """Re-render the booking form with a fresh token so the user can retry."""
+    template = "book.html" if (request.referrer or '').rstrip('/').endswith('/book') else "index.html"
+    return render_template(template, error=message, form_token=issue_form_token()), status
 
 
 @app.route("/submit_reservation", methods=["POST"])
 def submit_reservation_route():
     logger.info("Reservation form submitted")
 
+    # Generous on attempts (people fat-finger their phone number), strict on
+    # bookings that actually get written.
+    if rate_limited('reservation_attempt', limit=20, window_seconds=3600):
+        logger.warning(f"Reservation attempt rate limit hit for {client_ip()}")
+        return reservation_error(
+            "Too many booking attempts. Please try again later or call us on +61 423 987 048.", status=429)
+
     submitted_token = request.form.get('form_token')
     session_token = session.pop('form_token', None)
-    if not submitted_token or submitted_token != session_token:
+    issued_at = session.pop('form_issued_at', None)
+    if not submitted_token or not session_token or not secure_equals(submitted_token, session_token):
         logger.warning("Duplicate or invalid form submission blocked")
         return redirect(url_for('home'))
 
-    name = request.form.get("name")
-    email = request.form.get("email")
-    phone = clean_phone(request.form.get("phone"))
-    people = request.form.get("people")
-    date = request.form.get("date")
-    time = request.form.get("time")
-    dish_type = request.form.get('dish-type')
-    notes = request.form.get('notes', "")
+    # Honeypot: hidden from real users, irresistible to form-filling bots.
+    if request.form.get('website'):
+        logger.warning(f"Honeypot triggered from {client_ip()} - discarding submission")
+        return redirect(url_for('home'))
 
-    if not name or not email or not phone or not people or not date or not time:
-        logger.warning("Reservation submission failed - missing fields")
-        return render_template("index.html", error="All fields are required. Please fill out the entire form.")
+    if issued_at and datetime.now().timestamp() - issued_at < MIN_FILL_SECONDS:
+        logger.warning(f"Form submitted too fast from {client_ip()} - discarding submission")
+        return redirect(url_for('home'))
+
+    data, error = validate_reservation(request.form)
+    if error:
+        logger.warning(f"Reservation rejected from {client_ip()}: {error}")
+        return reservation_error(error)
+
+    if rate_limited('reservation_booked', limit=5, window_seconds=3600):
+        logger.warning(f"Booking rate limit hit for {client_ip()}")
+        return reservation_error(
+            "You've made several bookings already. For more, please call us on +61 423 987 048.", status=429)
 
     _, sheet = get_sheets()
     reservation_id = generate_reservation_id()
-    sheet.append_row([reservation_id, name, date, time, people, dish_type, phone, email, notes])
+    sheet.append_row([reservation_id, data['name'], data['date'], data['time'], data['people'],
+                      data['dish_type'], data['phone'], data['email'], data['notes']])
 
-    reservation_data = {
-        'name': name, 'phone': phone, 'email': email, 'people': people,
-        'date': date, 'time': time, 'dish_type': dish_type, 'notes': notes,
-        'reservation_id': reservation_id
-    }
-    create_date_sheet(name, phone, email, people, date, time, dish_type, notes, reservation_id)
+    reservation_data = dict(data, reservation_id=reservation_id)
+    create_date_sheet(data['name'], data['phone'], data['email'], data['people'], data['date'],
+                      data['time'], data['dish_type'], data['notes'], reservation_id)
 
-    threading.Thread(target=send_email_async, args=(email, name, reservation_data)).start()
+    threading.Thread(target=send_email_async,
+                     args=(data['email'], data['name'], reservation_data)).start()
 
     session['last_reservation'] = reservation_data
     return redirect(url_for('reservation_success'))
@@ -459,11 +641,19 @@ def staff_login():
 
 @app.route("/staff/login", methods=["POST"])
 def staff_login_post():
-    password = request.form.get('password')
-    if password == os.environ['STAFF_PASSWORD']:
+    if rate_limited('staff_login', limit=8, window_seconds=900):
+        logger.warning(f"Staff login rate limit hit from {client_ip()}")
+        return render_template('staff_login.html',
+                               error="Too many attempts. Please wait 15 minutes."), 429
+
+    password = request.form.get('password') or ''
+    if secure_equals(password, os.environ['STAFF_PASSWORD']):
+        session.clear()
         session['staff_authenticated'] = True
         session.permanent = True
         return redirect('/staff/dashboard')
+
+    logger.warning(f"Failed staff login from {client_ip()}")
     return render_template('staff_login.html', error="Invalid password"), 401
 
 
@@ -479,6 +669,8 @@ def get_reservations(date):
     spreadsheet, _ = get_sheets()
     try:
         sheet_name = date.replace('/', '-')
+        if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', sheet_name):
+            return jsonify({'success': False, 'message': 'Invalid date', 'reservations': []}), 400
         try:
             date_sheet = spreadsheet.worksheet(sheet_name)
         except gspread.WorksheetNotFound:
@@ -533,11 +725,21 @@ def get_reservations(date):
 def update_reservation_status():
     spreadsheet, _ = get_sheets()
     try:
-        data = request.get_json()
-        sheet_name = data.get('date').replace('/', '-')
+        data = request.get_json(silent=True) or {}
+        sheet_name = str(data.get('date') or '').replace('/', '-')
+        status = str(data.get('status') or '')
+        row_number = data.get('row_number')
+
+        if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', sheet_name):
+            return jsonify({'success': False, 'message': 'Invalid date'}), 400
+        if not isinstance(row_number, int) or row_number < 2:
+            return jsonify({'success': False, 'message': 'Invalid row'}), 400
+        if status not in ('Pending', 'Confirmed', 'Cancelled', 'Seated', 'No Show'):
+            return jsonify({'success': False, 'message': 'Invalid status'}), 400
+
         date_sheet = spreadsheet.worksheet(sheet_name)
-        date_sheet.update_cell(data.get('row_number'), 9, data.get('status'))
-        return jsonify({'success': True, 'message': f"Reservation updated to {data.get('status')}"})
+        date_sheet.update_cell(row_number, 9, status)
+        return jsonify({'success': True, 'message': f"Reservation updated to {status}"})
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error updating reservation: {str(e)}'})
 
@@ -603,7 +805,7 @@ def receive_sms():
     webhook_secret = os.environ.get('SMS_WEBHOOK_SECRET')
     if webhook_secret:
         provided = request.args.get('secret') or request.headers.get('X-Webhook-Secret', '')
-        if provided != webhook_secret:
+        if not secure_equals(provided, webhook_secret):
             logger.warning("SMS webhook rejected: invalid secret")
             return jsonify({"status": "unauthorized"}), 401
 
