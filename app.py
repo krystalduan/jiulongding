@@ -908,5 +908,8 @@ def health():
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    # Local dev only — production runs under gunicorn on 8080 (see Dockerfile).
+    # Default 5001 because port 5000 collides with macOS AirPlay and with the
+    # `firebase serve` dev server from the ordering project.
+    port = int(os.environ.get('PORT', 5001))
+    app.run(host='127.0.0.1', port=port, debug=False)

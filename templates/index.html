@@ -48,23 +48,23 @@
         <section class="about-us">
             <div class="about-photo animate-on-scroll">
                 <div class="jiugongge">
-                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img1.jpeg"
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img1.webp"
                             alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img2.jpeg"
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img2.webp"
                             alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img3.jpeg"
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img3.webp"
                             alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img4.jpeg"
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img4.webp"
                             alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img5.jpeg"
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img5.webp"
                             alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img6.jpeg"
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img6.webp"
                             alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img7.jpeg"
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img7.webp"
                             alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img8.jpeg"
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img8.webp"
                             alt="Restaurant photo"></div>
-                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img9.PNG"
+                    <div class="jiugongge-cell"><img loading="lazy" src="../static/photos/9gonggepng/img9.webp"
                             alt="Restaurant photo"></div>
                 </div>
             </div>
@@ -383,20 +383,14 @@
                 homeSection.style.transform = `translateY(${scrolled * 0.5}px)`;
             }
 
-            // Switch nav from transparent to frosted after scrolling past hero
+            // Switch nav from transparent to frosted once the hero scrolls past.
+            // Measured from the hero's real height rather than a fixed pixel
+            // value: the hero is 80vh, so a hardcoded threshold leaves the pale
+            // nav text sitting invisibly over white content on short screens.
             const nav = document.querySelector('.home-nav');
             if (nav) {
-                if (scrolled > 720) {
-                    nav.style.background = 'rgba(83, 12, 4, 0.717)';
-                    nav.style.backdropFilter = 'blur(10px)';
-                    nav.style.webkitBackdropFilter = 'blur(10px)';
-                    nav.style.boxShadow = '0 2px 12px rgba(0,0,0,0.15)';
-                } else {
-                    nav.style.background = 'transparent';
-                    nav.style.backdropFilter = '';
-                    nav.style.webkitBackdropFilter = '';
-                    nav.style.boxShadow = '';
-                }
+                const heroHeight = homeSection ? homeSection.offsetHeight : window.innerHeight * 0.8;
+                nav.classList.toggle('nav-scrolled', scrolled > heroHeight - 60);
             }
         });
 

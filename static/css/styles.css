@@ -120,11 +120,12 @@ body {
 }
 
 .home-nav.nav-scrolled {
-    background: #8B1A1A;
+    background: rgba(83, 12, 4, 0.717);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     box-shadow: 0 2px 12px rgba(0,0,0,0.15);
 }
+
 
 .home-nav ul {
     list-style-type: none;
@@ -795,14 +796,20 @@ body {
         padding-left: 0;
     }
 
-    /* Make nav more compact */
-    .home-nav {
-        top: 10px;
-        right: 10px;
+    /* Make nav more compact. Note: no top/right offsets here — the bar is
+       position:fixed and must stay flush against the viewport edges, or it
+       visibly detaches from the top-right corner on narrow screens. */
+    .home-nav ul {
+        padding: 0 12px;
+        height: 52px;
+        /* Clear the notch / rounded corners on modern phones. Plain padding
+           above is the fallback for browsers without env(). */
+        padding-left: max(12px, env(safe-area-inset-left, 0px));
+        padding-right: max(12px, env(safe-area-inset-right, 0px));
     }
 
     .home-nav li a {
-        padding: 8px 15px;
+        padding: 8px 12px;
         font-size: 16px;
     }
 
