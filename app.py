@@ -536,11 +536,49 @@ def sitemap():
 # CUSTOMER-FACING ROUTES
 # =============================================================================
 
+# A customer can legitimately have more than one booking page open — a tab on
+# / and another on /book, or a page reopened from history. Tracking a single
+# token meant the most recent page load silently invalidated every other one.
+MAX_OPEN_FORMS = 6
+MAX_REMEMBERED_SUBMISSIONS = 6
+
+FORM_FIELDS = ('name', 'email', 'phone', 'people', 'date', 'time', 'dish-type', 'notes')
+
+
 def issue_form_token():
     token = secrets.token_hex(16)
-    session['form_token'] = token
-    session['form_issued_at'] = datetime.now().timestamp()
+    pending = session.get('form_tokens', [])
+    pending.append([token, datetime.now().timestamp()])
+    session['form_tokens'] = pending[-MAX_OPEN_FORMS:]
     return token
+
+
+def consume_form_token(submitted):
+    """Claim a one-time form token.
+
+    Returns (status, issued_at) where status is one of:
+      'ok'        valid and unused; it is now spent
+      'duplicate' already used — a refresh or back-button resubmit
+      'unknown'   never issued to this session, or the session has expired
+    """
+    if not submitted:
+        return 'unknown', None
+
+    pending = session.get('form_tokens', [])
+    for index, entry in enumerate(pending):
+        token, issued_at = entry[0], entry[1]
+        if secure_equals(token, submitted):
+            session['form_tokens'] = pending[:index] + pending[index + 1:]
+            spent = session.get('spent_form_tokens', [])
+            spent.append(token)
+            session['spent_form_tokens'] = spent[-MAX_REMEMBERED_SUBMISSIONS:]
+            return 'ok', issued_at
+
+    for token in session.get('spent_form_tokens', []):
+        if secure_equals(token, submitted):
+            return 'duplicate', None
+
+    return 'unknown', None
 
 
 @app.route("/")
@@ -556,9 +594,19 @@ def book():
 
 
 def reservation_error(message, status=400):
-    """Re-render the booking form with a fresh token so the user can retry."""
-    template = "book.html" if (request.referrer or '').rstrip('/').endswith('/book') else "index.html"
-    return render_template(template, error=message, form_token=issue_form_token()), status
+    """Re-render the booking form with the customer's answers still in it.
+
+    Losing all eight fields to one mistyped digit was the quickest way to lose
+    a booking, so everything except the honeypot comes back with the page.
+    """
+    source = request.form.get('form_source')
+    if source not in ('index', 'book'):
+        # Pages cached before form_source existed still fall back to the referrer.
+        source = 'book' if (request.referrer or '').rstrip('/').endswith('/book') else 'index'
+    template = 'book.html' if source == 'book' else 'index.html'
+    values = {field: request.form.get(field, '') for field in FORM_FIELDS}
+    return render_template(template, error=message, form_token=issue_form_token(),
+                           values=values), status
 
 
 @app.route("/submit_reservation", methods=["POST"])
@@ -572,21 +620,33 @@ def submit_reservation_route():
         return reservation_error(
             "Too many booking attempts. Please try again later or call us on +61 423 987 048.", status=429)
 
-    submitted_token = request.form.get('form_token')
-    session_token = session.pop('form_token', None)
-    issued_at = session.pop('form_issued_at', None)
-    if not submitted_token or not session_token or not secure_equals(submitted_token, session_token):
-        logger.warning("Duplicate or invalid form submission blocked")
-        return redirect(url_for('home'))
+    token_status, issued_at = consume_form_token(request.form.get('form_token'))
+
+    if token_status == 'duplicate':
+        # A refresh or back-button resubmit of a booking we already saved.
+        # Show them the confirmation again rather than taking the order twice.
+        logger.info("Duplicate submission ignored; returning customer to their confirmation")
+        return redirect(url_for('reservation_success'))
+
+    if token_status == 'unknown':
+        # Expired session, cleared cookies, or a page that has been open for
+        # days. Previously this dropped the customer on the homepage with no
+        # message and no booking.
+        logger.warning(f"Unrecognised form token from {client_ip()}")
+        return reservation_error(
+            "Your booking page had been open for a while, so we couldn't confirm the submission. "
+            "Your details are still below — please press Submit once more.")
 
     # Honeypot: hidden from real users, irresistible to form-filling bots.
     if request.form.get('website'):
         logger.warning(f"Honeypot triggered from {client_ip()} - discarding submission")
-        return redirect(url_for('home'))
+        return reservation_error(
+            "Sorry, we couldn't process that booking. Please check your details and try again.")
 
     if issued_at and datetime.now().timestamp() - issued_at < MIN_FILL_SECONDS:
-        logger.warning(f"Form submitted too fast from {client_ip()} - discarding submission")
-        return redirect(url_for('home'))
+        logger.warning(f"Form submitted too fast from {client_ip()}")
+        return reservation_error(
+            "That came through too quickly for us to check. Please press Submit once more.")
 
     data, error = validate_reservation(request.form)
     if error:
@@ -616,7 +676,10 @@ def submit_reservation_route():
 
 @app.route("/reservation_success")
 def reservation_success():
-    reservation_data = session.pop('last_reservation', None)
+    # Deliberately not popped: refreshing the confirmation, or resubmitting an
+    # already-saved booking, should show the details again instead of bouncing
+    # the customer to the homepage. The next booking overwrites it.
+    reservation_data = session.get('last_reservation')
     if not reservation_data:
         return redirect('/')
     return render_template('reservation_success.html', **reservation_data)

@@ -613,10 +613,25 @@ body {
     grid-template-columns: repeat(1, minmax(0, 1fr));
 }
 
+/* Sits on the cream .reservation background, so it needs a panel of its own to
+   read as an alert rather than as body copy. */
 .error-message {
-    color: red;
-    margin-bottom: 15px;
-    font-weight: bold;
+    max-width: 960px;
+    margin: 0 auto 1.75rem;
+    padding: 1rem 1.25rem;
+    background-color: #fdf2f0;
+    border: 1px solid #c0392b;
+    border-left: 5px solid #8B1A1A;
+    border-radius: 6px;
+    color: #7a1810;
+    font-weight: 600;
+    line-height: 1.5;
+    text-align: center;
+}
+
+.error-message:focus {
+    outline: 2px solid #8B1A1A;
+    outline-offset: 3px;
 }
 
 .footer {

@@ -88,31 +88,31 @@
                 <table class="opening-hours">
                     <tr>
                         <td>Monday:</td>
-                        <td>12:00 PM - 11:30 PM</td>
+                        <td>11:00 AM - 10:30 PM</td>
                     </tr>
                     <tr>
                         <td>Tuesday:</td>
-                        <td>5:00 PM - 11:30 PM</td>
+                        <td>5:00 PM - 10:30 PM</td>
                     </tr>
                     <tr>
                         <td>Wednesday:</td>
-                        <td>5:00 PM - 11:30 PM</td>
+                        <td>5:00 PM - 10:30 PM</td>
                     </tr>
                     <tr>
-                        <td>Thurs-Sun:</td>
-                        <td>12:00 PM - 11:30 PM</td>
+                        <td>Thursday:</td>
+                        <td>11:00 AM - 10:30 PM</td>
                     </tr>
                     <tr>
                         <td>Friday:</td>
-                        <td>12:00 PM - 11:30 PM</td>
+                        <td>11:00 AM - 11:00 PM</td>
                     </tr>
                     <tr>
                         <td>Saturday:</td>
-                        <td>12:00 PM - 11:30 PM</td>
+                        <td>11:00 AM - 11:00 PM</td>
                     </tr>
                     <tr>
                         <td>Sunday:</td>
-                        <td>12:00 PM - 11:30 PM</td>
+                        <td>11:00 AM - 10:30 PM</td>
                     </tr>
                 </table>
             </div>
@@ -134,8 +134,12 @@
                 <p class="sub-title">Book your table quickly and easily below</p>
             </div>
 
+            {# `values` comes back populated when a submit was rejected, so the
+            customer never has to retype the whole form. #}
+            {% set v = values | default({}) %}
+
             {% if error %}
-            <div class="error-message">
+            <div class="error-message" id="booking-error" role="alert" tabindex="-1">
                 {{ error }}
             </div>
             {% endif %}
@@ -143,6 +147,7 @@
             <form action="/submit_reservation" method="POST" class="reservation-form animate-on-scroll"
                 id="reservation-form">
                 <input type="hidden" name="form_token" value="{{ form_token }}">
+                <input type="hidden" name="form_source" value="index">
                 <!-- Honeypot: hidden from humans, bots fill it in and get discarded -->
                 <div aria-hidden="true"
                     style="position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;">
@@ -152,12 +157,13 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="name"> 姓名 Full Name</label>
-                        <input type="text" id="name" name="name" placeholder="John Smith" maxlength="80" required>
+                        <input type="text" id="name" name="name" placeholder="John Smith" maxlength="80"
+                            value="{{ v.get('name', '') }}" required>
                     </div>
                     <div class="form-group">
                         <label for="email">邮箱 Email Address</label>
-                        <input type="email" id="email" name="email" placeholder="john.smith@gmail.com"
-                            maxlength="120" required>
+                        <input type="email" id="email" name="email" placeholder="john.smith@gmail.com" maxlength="120"
+                            value="{{ v.get('email', '') }}" required>
                     </div>
                 </div>
                 <div class="form-row">
@@ -166,59 +172,58 @@
                         <input type="tel" id="phone" name="phone" placeholder="0412345678"
                             pattern="^(?:\+?61[ -]?|0)4[0-9 -]{8,12}$"
                             title="Please enter a valid Australian mobile number (e.g. 0412345678 or +61412345678)"
-                            required>
+                            value="{{ v.get('phone', '') }}" required>
 
                     </div>
                     <div class="form-group">
                         <label for="people">人位 Number of People</label>
                         <select id="people" name="people" required>
                             <option value="">Select party size</option>
-                            <option value="1-2">1-2</option>
-                            <option value="3-4">3-4</option>
-                            <option value="4-6">4-6</option>
-                            <option value="7-10">7-10</option>
-                            <option value="10+">10+</option>
+                            {% for size in ['1-2', '3-4', '4-6', '7-10', '10+'] %}
+                            <option value="{{ size }}" {% if v.get('people')==size %}selected{% endif %}>{{ size }}
+                            </option>
+                            {% endfor %}
                         </select>
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label for="date">日期 Date</label>
-                        <input type="date" id="date" name="date" required>
+                        <input type="date" id="date" name="date" value="{{ v.get('date', '') }}" required>
                     </div>
                     <div class="form-group">
                         <label for="time">时间 Time</label>
                         <select id="time" name="time" required>
                             <option value="">Select time</option>
-                            <option value="12:00">12:00 PM</option>
-                            <option value="12:30">12:30 PM</option>
-                            <option value="13:00">1:00 PM</option>
-                            <option value="13:30">1:30 PM</option>
-                            <option value="17:00">5:00 PM</option>
-                            <option value="17:30">5:30 PM</option>
-                            <option value="18:00">6:00 PM</option>
-                            <option value="18:30">6:30 PM</option>
-                            <option value="19:00">7:00 PM</option>
-                            <option value="19:30">7:30 PM</option>
-                            <option value="20:00">8:00 PM</option>
-                            <option value="20:30">8:30 PM</option>
+                            {% for slot, slot_label in [
+                            ('12:00', '12:00 PM'), ('12:30', '12:30 PM'), ('13:00', '1:00 PM'), ('13:30', '1:30 PM'),
+                            ('17:00', '5:00 PM'), ('17:30', '5:30 PM'), ('18:00', '6:00 PM'), ('18:30', '6:30 PM'),
+                            ('19:00', '7:00 PM'), ('19:30', '7:30 PM'), ('20:00', '8:00 PM'), ('20:30', '8:30 PM')] %}
+                            <option value="{{ slot }}" {% if v.get('time')==slot %}selected{% endif %}>{{ slot_label }}
+                            </option>
+                            {% endfor %}
                         </select>
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label for="dish-type">菜类型 Type of Dish</label>
-                        <select id="dish-type" name="dish-type" placeholder="Type of Dish" required>
+                        <select id="dish-type" name="dish-type" required>
                             <option value="">Type of Dish</option>
-                            <option value="大火锅">大火锅 Hotpot - Shared Pot</option>
-                            <option value="小火锅">小火锅 Hotpot - Individual Pot</option>
-                            <option value="炒菜">炒菜或烤鱼 Stir-Fry</option>
+                            {% for dish, dish_label in [
+                            ('大火锅', '大火锅 Hotpot - Shared Pot'),
+                            ('小火锅', '小火锅 Hotpot - Individual Pot'),
+                            ('炒菜', '炒菜或烤鱼 Stir-Fry')] %}
+                            <option value="{{ dish }}" {% if v.get('dish-type')==dish %}selected{% endif %}>{{
+                                dish_label }}</option>
+                            {% endfor %}
                         </select>
                     </div>
                     <div class="form-group">
                         <label for="notes">Notes</label>
                         <input type="text" id="notes" name="notes" maxlength="300"
-                            placeholder="e.g. high chairs, number of people, kids">
+                            placeholder="e.g. high chairs, number of people, kids"
+                            value="{{ v.get('notes', '') }}">
                     </div>
                 </div>
                 <button type="submit" class="submit-btn">SUBMIT</button>
@@ -303,23 +308,40 @@
                 });
             });
 
-            // Set up date picker constraints
+            // Set up date picker constraints.
+            // Local calendar date, not UTC: toISOString() rolls over ~10 hours
+            // early in Sydney, which made "is this today?" comparisons wrong.
+            function localDate(d) {
+                return d.getFullYear() + '-' +
+                    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(d.getDate()).padStart(2, '0');
+            }
+
             const currentDate = new Date();
-            const today = currentDate.toISOString().split('T')[0];
+            const today = localDate(currentDate);
             const oneMonthAhead = new Date(currentDate);
             oneMonthAhead.setMonth(oneMonthAhead.getMonth() + 1);
 
             const datePicker = document.getElementById('date');
+
+            function syncTimeOptions() {
+                if (datePicker.value === today) {
+                    filterTimesForToday();
+                } else {
+                    resetTimeOptions();
+                }
+            }
+
             if (datePicker) {
                 datePicker.setAttribute('min', today);
-                datePicker.setAttribute('max', oneMonthAhead.toISOString().split('T')[0]);
-                datePicker.addEventListener('change', function () {
-                    if (this.value === today) {
-                        filterTimesForToday();
-                    } else {
-                        resetTimeOptions();
-                    }
-                });
+                datePicker.setAttribute('max', localDate(oneMonthAhead));
+                datePicker.addEventListener('change', syncTimeOptions);
+                // A rejected submit comes back with the date already filled in,
+                // so apply the same-day rules now rather than waiting for a
+                // change event that will never fire.
+                if (datePicker.value) {
+                    syncTimeOptions();
+                }
             }
 
             function filterTimesForToday() {
@@ -374,6 +396,26 @@
                 submitBtn.disabled = true;
                 submitBtn.textContent = 'Submitting...';
             });
+
+            // Coming back via the back button restores the page from cache with
+            // the button still disabled, which looks like a broken form.
+            window.addEventListener('pageshow', function (event) {
+                if (event.persisted) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'SUBMIT';
+                }
+            });
+
+            // Make a rejected submit impossible to miss: the form sits well
+            // below the fold here, so without this the page just reloads at the
+            // top and the customer never sees why it failed.
+            const errorBox = document.getElementById('booking-error');
+            if (errorBox) {
+                document.querySelectorAll('#reservation .animate-on-scroll')
+                    .forEach(el => el.classList.add('visible'));
+                errorBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                errorBox.focus({ preventScroll: true });
+            }
         });
 
         window.addEventListener('scroll', () => {
