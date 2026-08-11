@@ -163,10 +163,19 @@ body {
     display: flex;
     width: 100%;
     overflow: hidden;
-    background: url(../photos/IMG_20210306_194151.jpg);
+    /* Same pair as the success page: JPEG fallback, then WebP. */
+    background-image: url(../photos/IMG_20210306_194151.jpg);
+    background-image: url(../photos/hero-1200.webp);
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
+    background-color: #2b2422;
+}
+
+@media (min-width: 1000px) {
+    .home {
+        background-image: url(../photos/hero-1920.webp);
+    }
 }
 
 .home::before {
@@ -684,13 +693,24 @@ body {
     /* Center vertically */
     justify-content: center;
     /* Center horizontally */
-    background: url(../photos/IMG_20210306_194151.jpg);
+    /* First line is a fallback for browsers without WebP; the second wins
+       everywhere else. Phones get the 1200px file, desktops the 1920px one
+       (see the media query below). */
+    background-image: url(../photos/IMG_20210306_194151.jpg);
+    background-image: url(../photos/hero-1200.webp);
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
+    background-color: #2b2422;
     padding: 20px;
     /* Add some padding */
     box-sizing: border-box;
+}
+
+@media (min-width: 1000px) {
+    .success-page {
+        background-image: url(../photos/hero-1920.webp);
+    }
 }
 
 .success-page::before {

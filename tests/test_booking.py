@@ -43,12 +43,53 @@ class TestValidBookings:
         date = days_from_now(5)
         submit(client, name='Jane Smith', date=date, time='18:30', people='7-10')
         row = sheets.master.rows[1]
-        # [id, name, date, time, people, dish, phone, email, notes]
+        # [id, name, date, time, people, dish, phone, email, notes, booked_at]
         assert row[1] == 'Jane Smith'
         assert row[2] == date
         assert row[3] == '18:30'
         assert row[4] == '7-10'
         assert row[6] == '61412345678', "phone should be normalised to 61..."
+
+
+class TestBookedAtColumn:
+    """Column J records when the booking was submitted, as DD/MM/YY HH:MM."""
+
+    def test_the_row_has_a_booked_at_value(self, client, sheets):
+        submit(client)
+        row = sheets.master.rows[1]
+        assert len(row) == 10, f"expected 10 columns, got {len(row)}: {row}"
+        assert row[9], "booked-at column is empty"
+
+    def test_it_is_formatted_day_month_year_hour_minute(self, client, sheets):
+        import re
+        submit(client)
+        booked_at = sheets.master.rows[1][9]
+        assert re.fullmatch(r'\d{2}/\d{2}/\d{2} \d{2}:\d{2}', booked_at), \
+            f"expected DD/MM/YY HH:MM, got {booked_at!r}"
+
+    def test_it_records_now_in_sydney_time(self, client, sheets):
+        from datetime import datetime, timedelta
+        import app as flask_app
+        submit(client)
+        booked_at = sheets.master.rows[1][9]
+        stamp = datetime.strptime(booked_at, '%d/%m/%y %H:%M')
+        now = datetime.now(flask_app.sydney_tz).replace(tzinfo=None)
+        assert abs((now - stamp).total_seconds()) < 120, \
+            f"booked-at {booked_at} is not close to Sydney now {now:%d/%m/%y %H:%M}"
+
+    def test_it_is_the_submission_time_not_the_booking_date(self, client, sheets):
+        """A booking for next month must still be stamped with today."""
+        from datetime import datetime
+        import app as flask_app
+        submit(client, date=days_from_now(30))
+        booked_at = sheets.master.rows[1][9]
+        today = datetime.now(flask_app.sydney_tz).strftime('%d/%m/%y')
+        assert booked_at.startswith(today), \
+            f"expected today ({today}), got {booked_at}"
+
+    def test_rejected_bookings_write_nothing(self, client, sheets):
+        submit(client, phone='+1-555-000-1111')
+        assert len(sheets.master.rows) == 1
 
     def test_booking_also_appears_on_the_date_sheet(self, client, sheets):
         date = days_from_now(4)
@@ -203,7 +244,9 @@ class TestDateValidation:
         assert_rejected(submit(client, date=days_from_now(-1)), sheets, 'past date')
 
     def test_far_future_date_is_rejected(self, client, sheets):
-        assert_rejected(submit(client, date='2026-09-12'), sheets, 'one month')
+        # Relative, not a fixed date: a hardcoded one silently drifts inside the
+        # booking window as time passes and the test then fails for no reason.
+        assert_rejected(submit(client, date=days_from_now(45)), sheets, 'one month')
 
     def test_two_months_out_is_rejected(self, client, sheets):
         assert_rejected(submit(client, date=days_from_now(60)), sheets, 'one month')

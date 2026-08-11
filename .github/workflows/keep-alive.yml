@@ -1,16 +1,25 @@
-name: Keep Render App Alive
+name: Keep app warm
+
+# Was pinging https://jiulongding.onrender.com/test — a domain the app no
+# longer uses and a route that does not exist, so every run silently failed.
+# Now points at the live Fly domain and the real /health route.
+#
+# Note: fly.toml sets auto_stop_machines = 'stop' and min_machines_running = 0,
+# so the machine is meant to sleep when idle. This only keeps it warm during
+# opening hours, when a cold start would be visible to a customer mid-booking.
+# The daily SMS job does not depend on this — it wakes the machine itself.
 
 on:
   schedule:
-    # runs every 10 minutes
-    - cron: '*/14 * * * *'
-  workflow_dispatch: # allow manual trigger from github
+    # every 15 min, 10:00-22:00 Sydney (23:00-11:00 UTC, covers both offsets)
+    - cron: '*/15 23,0-11 * * *'
+  workflow_dispatch:
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping the app
+      - name: Ping /health
         run: |
-          echo "Pinging app at $(date)"
-          curl -f https://jiulongding.onrender.com/test || echo "Ping failed"
+          echo "Pinging at $(TZ=Australia/Sydney date '+%Y-%m-%d %H:%M %Z')"
+          curl -fsS --max-time 60 https://jiulongding.au/health && echo " - OK"

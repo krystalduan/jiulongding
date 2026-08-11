@@ -2,9 +2,8 @@ from dotenv import load_dotenv
 
 from flask import Flask, render_template, request, redirect, url_for, jsonify, session
 from datetime import datetime, timedelta
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
 from functools import wraps
+from html import escape
 import logging
 from pytz import timezone
 import threading
@@ -82,7 +81,30 @@ def get_sheets():
             sh = sp.get_worksheet(0)
             logger.warning(f"'Master Data' not found, using: {sh.title}")
         _spreadsheet, _sheet = sp, sh
+        _ensure_booked_at_header(sh)
     return _spreadsheet, _sheet
+
+
+MASTER_BOOKED_AT_COL = 10          # column J, appended after Notes
+MASTER_BOOKED_AT_HEADER = 'Booked At'
+
+
+def _ensure_booked_at_header(sheet):
+    """Label column J once, so the new timestamp column isn't a blank header.
+
+    Only writes when the cell is genuinely empty — never overwrites an
+    existing label. Runs once per process, and any failure is swallowed:
+    a missing header must never stop a booking being saved.
+    """
+    try:
+        header = sheet.row_values(1)
+        existing = header[MASTER_BOOKED_AT_COL - 1] if len(header) >= MASTER_BOOKED_AT_COL else ''
+        if existing.strip():
+            return
+        sheet.update_cell(1, MASTER_BOOKED_AT_COL, MASTER_BOOKED_AT_HEADER)
+        logger.info(f"Added '{MASTER_BOOKED_AT_HEADER}' header to Master Data column J")
+    except Exception as e:
+        logger.warning(f"Could not set '{MASTER_BOOKED_AT_HEADER}' header: {e}")
 
 
 def _warmup_sheets():
@@ -102,48 +124,22 @@ auth_string = f"{API_USERNAME}:{API_PASSWORD}"
 AUTH_HEADER = base64.b64encode(auth_string.encode()).decode()
 
 # =============================================================================
-# SCHEDULER — day-of SMS at 8:30 AM Sydney time (fired via external cron)
+# TIMEZONE
 # =============================================================================
+#
+# Day-of SMS used to be sent by an in-process APScheduler. That was removed:
+#   - it ran once per gunicorn worker, so every customer got a duplicate SMS;
+#   - fly.toml sets min_machines_running = 0 with auto_stop_machines, so at
+#     8:30 AM the machine is usually stopped and the job never fired at all.
+#
+# The job is now driven entirely by GitHub Actions calling
+# /api/send-sms-cron (see .github/workflows/send-daily-sms.yml), which also
+# wakes the machine. send_sms_on_date() is idempotent, so repeat calls on the
+# same day are safe.
 
 sydney_tz = timezone('Australia/Sydney')
-# daemon=True is required: Python joins non-daemon threads *before* running
-# atexit handlers, so a non-daemon scheduler deadlocks the process on shutdown
-# (gunicorn workers never exit, tests and `python3 app.py` hang on Ctrl-C).
-scheduler = BackgroundScheduler(
-    timezone=sydney_tz,
-    daemon=True,
-    job_defaults={'coalesce': True, 'max_instances': 1, 'misfire_grace_time': 3600}
-)
 
-def send_today_confirmations_background():
-    with app.app_context():
-        today = datetime.now(sydney_tz).strftime('%Y-%m-%d')
-        result = send_sms_on_date(today, message_type="day_of")
-        logger.info(f"Automatic day-of SMS job completed: {result}")
-
-scheduler.add_job(
-    func=send_today_confirmations_background,
-    trigger=CronTrigger(hour=8, minute=30, timezone=sydney_tz),
-    id='send_today_sms',
-    name='Send Today SMS',
-    replace_existing=True
-)
-
-try:
-    scheduler.start()
-    logger.info("Scheduler started")
-except Exception as e:
-    logger.error(f"Scheduler failed to start: {e}", exc_info=True)
-
-def _shutdown_scheduler():
-    try:
-        if scheduler.running:
-            scheduler.shutdown(wait=False)
-    except Exception:
-        pass
-
-
-atexit.register(_shutdown_scheduler)
+USE_RELOADER = __name__ == '__main__' and os.environ.get('FLASK_RELOAD', '1') != '0'
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -314,55 +310,175 @@ def rate_limited(bucket, limit, window_seconds):
         return False
 
 
+RESTAURANT_PHONE = '+61 423 987 048'
+RESTAURANT_ADDRESS = '71 Dixon Street (up the stairs), Haymarket, Sydney NSW 2000'
+
+# Web fonts are stripped by Gmail and most clients, so these are stacks of
+# fonts already installed on the reader's machine. Both are old-style serifs
+# for a 复古 feel: Garamond/Palatino for English, and a Song/Ming face for
+# Chinese — the traditional typeface of printed Chinese text.
+EMAIL_FONT = ("'EB Garamond', Garamond, 'Hoefler Text', 'Palatino Linotype', "
+              "Palatino, 'Book Antiqua', Georgia, 'Times New Roman', serif")
+EMAIL_FONT_CN = ("'Songti SC', STSong, 'Noto Serif SC', 'Source Han Serif SC', "
+                 "SimSun, 'Songti TC', STKaiti, KaiTi, serif")
+
+
+def format_phone_display(phone):
+    """61412345678 -> +61 412 345 678"""
+    digits = re.sub(r'\D', '', str(phone or ''))
+    if re.fullmatch(r'61\d{9}', digits):
+        return f'+61 {digits[2:5]} {digits[5:8]} {digits[8:]}'
+    return phone or ''
+
+
+def build_confirmation_email(customer_name, d):
+    """Returns (subject, html_body, text_body) for a reservation confirmation."""
+    try:
+        date_obj = datetime.strptime(d['date'], '%Y-%m-%d')
+        formatted_date = date_obj.strftime('%A, %d %B %Y')   # in the email body
+        subject_date = date_obj.strftime('%d/%m/%Y')         # in the subject line
+    except Exception:
+        formatted_date = subject_date = d['date']
+
+    phone = format_phone_display(d.get('phone'))
+    dish = d.get('dish_type') or 'Not specified'
+    people = d.get('people', '')
+
+    subject = f"Your reservation at JiuLongDing Hotpot | {subject_date}"
+
+    # Raw values here — row_html escapes each one exactly once.
+    rows = [
+        ('Name', str(customer_name)),
+        ('Date', formatted_date),
+        ('Time', d['time']),
+        ('Party size', f'{people} people'),
+        ('Dish type', dish),
+        ('Contact', phone),
+    ]
+    row_html = ''.join(
+        f'''
+        <tr>
+          <td style="padding:11px 0;border-bottom:1px solid #ece3dc;
+                     font-size:13px;letter-spacing:.06em;text-transform:uppercase;
+                     color:#8a7f77;width:38%;">{escape(label)}</td>
+          <td style="padding:11px 0;border-bottom:1px solid #ece3dc;
+                     font-size:16px;color:#1C1008;font-weight:600;">{escape(str(value))}</td>
+        </tr>''' for label, value in rows)
+
+    html_body = f"""<!doctype html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{escape(subject)}</title></head>
+<body style="margin:0;padding:0;background:#FAF7F2;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    {formatted_date} at {d['time']} for {people} people. We hold tables for 15 minutes.
+  </div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+         style="background:#FAF7F2;padding:28px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+             style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;
+                    border:1px solid #eee2d8;">
+
+        <tr><td align="center" style="background:#8B1A1A;padding:30px 32px 26px;">
+          <div style="font-family:{EMAIL_FONT_CN};font-size:34px;color:#ffffff;
+                      letter-spacing:.22em;line-height:1.15;text-indent:.22em;">九龙鼎</div>
+          <div style="font-family:{EMAIL_FONT};font-size:19px;color:#f7e3d8;
+                      margin-top:10px;letter-spacing:.05em;">JiuLongDing</div>
+          <div style="font-family:{EMAIL_FONT};font-size:11px;color:#dda9a2;
+                      margin-top:6px;letter-spacing:.24em;text-transform:uppercase;
+                      text-indent:.24em;">Chongqing Hotpot</div>
+        </td></tr>
+
+        <tr><td style="padding:30px 32px 4px;">
+         
+        </td></tr>
+
+        <tr><td style="padding:20px 32px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                 style="font-family:{EMAIL_FONT};border-top:1px solid #ece3dc;">
+            {row_html}
+          </table>
+        </td></tr>
+
+        <tr><td style="padding:26px 32px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                 style="background:#FAF7F2;border-radius:10px;">
+            <tr><td style="padding:18px 20px;font-family:{EMAIL_FONT};">
+              <div style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+                          color:#8a7f77;margin-bottom:7px;">Finding us</div>
+              <div style="font-size:15px;color:#1C1008;line-height:1.6;">
+                71 Dixon Street <span style="color:#8a7f77;">(up the stairs)</span><br>
+                Haymarket, Sydney NSW 2000</div>
+              <div style="margin-top:11px;font-size:15px;">
+                <a href="tel:+61423987048"
+                   style="color:#8B1A1A;text-decoration:none;font-weight:600;">
+                   {RESTAURANT_PHONE}</a></div>
+            </td></tr>
+          </table>
+        </td></tr>
+
+        <tr><td style="padding:22px 32px 30px;">
+          <p style="margin:0;font-family:{EMAIL_FONT};font-size:14px;
+                    line-height:1.7;color:#5d534c;">
+            We hold tables for <strong style="color:#1C1008;">15 minutes</strong>.
+            To change or cancel, please call us with your name and booking date.</p>
+        </td></tr>
+
+        <tr><td align="center"
+                style="background:#faf5f1;padding:20px 32px;border-top:1px solid #f0e6dd;">
+          <p style="margin:0;font-family:{EMAIL_FONT};font-size:13px;
+                    line-height:1.7;color:#8a7f77;">
+            JiuLongDing Chongqing Hotpot ·
+            <span style="font-family:{EMAIL_FONT_CN};">九龙鼎重庆火锅</span><br>
+            {RESTAURANT_ADDRESS}</p>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+    detail_lines = '\n'.join(f'  {label}: {value}' for label, value in rows)
+    text_body = f"""JIULONGDING 九龙鼎 - CHONGQING HOTPOT
+
+
+YOUR BOOKING
+{detail_lines}
+
+FINDING US
+  71 Dixon Street (up the stairs)
+  Haymarket, Sydney NSW 2000
+  {RESTAURANT_PHONE}
+
+We hold tables for 15 minutes. To change or cancel, please call us
+with your name and booking date.
+
+JiuLongDing Chongqing Hotpot (九龙鼎重庆火锅)
+{RESTAURANT_ADDRESS}
+"""
+    return subject, html_body, text_body
+
+
 def send_confirmation_email(customer_email, customer_name, reservation_details):
     try:
         logger.info(f"Sending email to {customer_email}")
-        try:
-            date_obj = datetime.strptime(reservation_details['date'], '%Y-%m-%d')
-            formatted_date = date_obj.strftime('%A, %B %d, %Y')
-        except Exception:
-            formatted_date = reservation_details['date']
-
-        subject = f"Booking Summary - {formatted_date} at {reservation_details['time']}"
-        text_body = f"""Dear {customer_name},
-
-Thank you for choosing JiuLongDing Chongqing Hotpot!
-
-RESERVATION SUMMARY
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📅 Date: {formatted_date}
-🕐 Time: {reservation_details['time']}
-👥 People: {reservation_details['people']} people
-🍲 Dish Type: {reservation_details.get('dish_type', 'Not specified')}
-📞 Contact: {reservation_details['phone']}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🏢 RESTAURANT LOCATION
-JiuLongDing Chongqing Hotpot (九龙鼎重庆火锅)
-📍 71 Dixon Street (up the stairs)
-    Haymarket, Sydney NSW 2000
-📞 Phone: +61 423 987 048
-
-
-⚠️ IMPORTANT REMINDERS
-• Please arrive on time - we hold tables for 15 minutes
-• To cancel or make changes, please call us at +61 423 987 048 with your name and date of reservation
-
-Warm regards,
-The JiuLongDing Team
-九龙鼎重庆火锅
-
----
-This is an automated reservation summary."""
+        subject, html_body, text_body = build_confirmation_email(
+            customer_name, reservation_details)
 
         response = requests.post(
             "https://api.resend.com/emails",
             headers={"Authorization": f"Bearer {os.environ.get('RESEND_API_KEY')}"},
             json={
-                "from": "JLD Hotpot <reservations@jiulongding.au>",
+                "from": "JiuLongDing Hotpot <reservations@jiulongding.au>",
                 "to": [customer_email],
+                # A real reply-to is a positive signal and lets guests actually
+                # reach the restaurant instead of a dead no-reply address.
+                "reply_to": os.environ.get('REPLY_TO_EMAIL', 'reservations@jiulongding.au'),
                 "subject": subject,
-                "text": text_body
+                "html": html_body,
+                "text": text_body,
             },
             timeout=10
         )
@@ -452,34 +568,55 @@ def send_sms_on_date(target_date, message_type="day_of"):
         all_data = date_sheet.get_all_values()
         sent_count = 0
         failed_count = 0
+        skipped_count = 0
         batch_updates = []
 
+        # Idempotency marker written into column K. It carries the send date,
+        # so calling this twice in one day is a no-op while tomorrow's run
+        # still goes ahead. Without this, nothing stops a duplicate SMS: the
+        # loop keys off column I ("Pending"), which sending does not change.
+        now = datetime.now(sydney_tz)
+        today_stamp = now.strftime('%d/%m/%y')
+        sent_marker_prefix = f"{message_type} sent {today_stamp}"
+
         for i, row in enumerate(all_data[1:], start=2):
-            if len(row) < 10:
+            if len(row) < 9:
                 continue
             name, time, people, phone = row[0], row[1], row[2], row[3]
             confirmed = row[8]
+            sms_note = row[10] if len(row) > 10 else ''
 
-            if confirmed == "Pending" and phone:
-                sms_message = (
-                    f"Hi {name}! This is a reminder of your reservation today "
-                    f"at {time} for {people} people.\n"
-                    f"Reply Y to confirm or N to cancel.\n"
-                    f"Location: 71 Dixon St (up the stairs), Haymarket - JLD Hotpot"
-                )
-                result = send_sms(phone, sms_message,
-                                  custom_ref=f"{message_type}_{datetime.now().timestamp()}")
-                timestamp = datetime.now().strftime('%H:%M')
-                if result:
-                    sent_count += 1
-                    batch_updates.append({'range': f'K{i}', 'values': [[f"{message_type} SMS sent {timestamp}"]]})
-                else:
-                    failed_count += 1
-                    batch_updates.append({'range': f'K{i}', 'values': [[f"{message_type} SMS failed {timestamp}"]]})
+            if confirmed != "Pending" or not phone:
+                continue
+
+            # A previous failure is left to retry; only a success blocks a resend.
+            if sent_marker_prefix in sms_note:
+                skipped_count += 1
+                logger.info(f"Row {i}: {message_type} already sent today, skipping")
+                continue
+
+            sms_message = (
+                f"Hi {name}! This is a reminder of your reservation today "
+                f"at {time} for {people} people.\n"
+                f"Reply Y to confirm or N to cancel.\n"
+                f"Location: 71 Dixon St (up the stairs), Haymarket - JLD Hotpot"
+            )
+            result = send_sms(phone, sms_message,
+                              custom_ref=f"{message_type}_{now.timestamp()}")
+            stamp = now.strftime('%d/%m/%y %H:%M')
+            if result:
+                sent_count += 1
+                batch_updates.append(
+                    {'range': f'K{i}', 'values': [[f"{message_type} sent {stamp}"]]})
+            else:
+                failed_count += 1
+                batch_updates.append(
+                    {'range': f'K{i}', 'values': [[f"{message_type} failed {stamp}"]]})
 
         if batch_updates:
             date_sheet.batch_update(batch_updates)
-        return f"SMS Summary for {target_date}: {sent_count} sent successfully, {failed_count} failed"
+        return (f"SMS Summary for {target_date}: {sent_count} sent, "
+                f"{failed_count} failed, {skipped_count} already sent today")
 
     except Exception as e:
         return f"Error sending SMS for {target_date}: {e}"
@@ -660,8 +797,12 @@ def submit_reservation_route():
 
     _, sheet = get_sheets()
     reservation_id = generate_reservation_id()
+    # Column J: when the booking was submitted (Sydney time), so staff can tell
+    # a booking made this morning from one made three weeks ago.
+    booked_at = datetime.now(sydney_tz).strftime('%d/%m/%y %H:%M')
     sheet.append_row([reservation_id, data['name'], data['date'], data['time'], data['people'],
-                      data['dish_type'], data['phone'], data['email'], data['notes']])
+                      data['dish_type'], data['phone'], data['email'], data['notes'],
+                      booked_at])
 
     reservation_data = dict(data, reservation_id=reservation_id)
     create_date_sheet(data['name'], data['phone'], data['email'], data['people'], data['date'],
@@ -975,4 +1116,7 @@ if __name__ == "__main__":
     # Default 5001 because port 5000 collides with macOS AirPlay and with the
     # `firebase serve` dev server from the ordering project.
     port = int(os.environ.get('PORT', 5001))
-    app.run(host='127.0.0.1', port=port, debug=False)
+    # Auto-reload on save, so editing this file no longer needs a manual
+    # restart. Set FLASK_RELOAD=0 to turn it off. debug stays False: the
+    # Werkzeug debugger allows arbitrary code execution in the browser.
+    app.run(host='127.0.0.1', port=port, debug=False, use_reloader=USE_RELOADER)

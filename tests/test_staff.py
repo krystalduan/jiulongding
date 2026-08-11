@@ -180,6 +180,97 @@ class TestCronEndpoint:
         assert client.get('/api/send-sms-cron').status_code == 401
 
 
+class TestSmsIsSentOnce:
+    """The daily job is triggered twice (once per Sydney DST offset), and can
+    also be re-run by hand, so sending must be idempotent per day."""
+
+    def _sheet_with_pending_bookings(self, sheets, app_module, n=3):
+        from conftest import FakeWorksheet
+        from datetime import datetime
+        today = datetime.now(app_module.sydney_tz).strftime('%Y-%m-%d')
+        rows = [['Name', 'Time', 'People', 'Phone', 'Email', 'Date', 'Dish',
+                 'Notes', 'Confirmed', 'ID', 'SMS Reply', 'Method']]
+        for i in range(n):
+            rows.append([f'Guest{i}', '19:00', '2', f'6141234567{i}', 'g@x.com',
+                         today, '大火锅', '', 'Pending', str(i + 1), '', ''])
+        sheets.date_sheets[today] = FakeWorksheet(today, rows)
+        return today
+
+    def _count_sends(self, app_module, monkeypatch):
+        sent = []
+        monkeypatch.setattr(app_module, 'send_sms',
+                            lambda to, msg, custom_ref=None: sent.append(to) or {'ok': True})
+        return sent
+
+    def test_first_run_texts_everyone(self, sheets, app_module, monkeypatch):
+        self._sheet_with_pending_bookings(sheets, app_module, n=3)
+        sent = self._count_sends(app_module, monkeypatch)
+        today = __import__('datetime').datetime.now(app_module.sydney_tz).strftime('%Y-%m-%d')
+        app_module.send_sms_on_date(today)
+        assert len(sent) == 3, f"expected 3 texts, got {len(sent)}"
+
+    def test_second_run_same_day_sends_nothing(self, sheets, app_module, monkeypatch):
+        """This is the duplicate-SMS bug: it must send 3, then 0."""
+        today = self._sheet_with_pending_bookings(sheets, app_module, n=3)
+        sent = self._count_sends(app_module, monkeypatch)
+
+        app_module.send_sms_on_date(today)
+        assert len(sent) == 3
+
+        result = app_module.send_sms_on_date(today)
+        assert len(sent) == 3, f"second run re-sent {len(sent) - 3} duplicate texts"
+        assert 'already sent today' in result
+
+    def test_a_third_run_still_sends_nothing(self, sheets, app_module, monkeypatch):
+        today = self._sheet_with_pending_bookings(sheets, app_module, n=2)
+        sent = self._count_sends(app_module, monkeypatch)
+        for _ in range(3):
+            app_module.send_sms_on_date(today)
+        assert len(sent) == 2
+
+    def test_a_failed_send_is_retried(self, sheets, app_module, monkeypatch):
+        """A failure must not be treated as 'already sent'."""
+        today = self._sheet_with_pending_bookings(sheets, app_module, n=1)
+        attempts = []
+
+        def failing(to, msg, custom_ref=None):
+            attempts.append(to)
+            return None
+
+        monkeypatch.setattr(app_module, 'send_sms', failing)
+        app_module.send_sms_on_date(today)
+        app_module.send_sms_on_date(today)
+        assert len(attempts) == 2, "a failed send should be retried, not skipped"
+
+    def test_confirmed_bookings_are_never_texted(self, sheets, app_module, monkeypatch):
+        today = self._sheet_with_pending_bookings(sheets, app_module, n=2)
+        sheets.date_sheets[today].rows[1][8] = 'Confirmed'
+        sent = self._count_sends(app_module, monkeypatch)
+        app_module.send_sms_on_date(today)
+        assert len(sent) == 1
+
+    def test_marker_records_the_send_date(self, sheets, app_module, monkeypatch):
+        """The marker must carry the date, or tomorrow's run would think it
+        had already sent and skip everyone."""
+        import re
+        from datetime import datetime
+        today = self._sheet_with_pending_bookings(sheets, app_module, n=1)
+        self._count_sends(app_module, monkeypatch)
+        app_module.send_sms_on_date(today)
+
+        marker = sheets.date_sheets[today].rows[1][10]
+        assert re.search(r'\d{2}/\d{2}/\d{2}', marker), \
+            f"marker has no date, so it cannot expire: {marker!r}"
+        assert datetime.now(app_module.sydney_tz).strftime('%d/%m/%y') in marker
+
+    def test_yesterdays_marker_does_not_block_today(self, sheets, app_module, monkeypatch):
+        today = self._sheet_with_pending_bookings(sheets, app_module, n=1)
+        sheets.date_sheets[today].rows[1][10] = 'day_of sent 01/01/20 08:30'
+        sent = self._count_sends(app_module, monkeypatch)
+        app_module.send_sms_on_date(today)
+        assert len(sent) == 1, "a stale marker from another day must not block sending"
+
+
 class TestSmsWebhook:
 
     def test_correct_secret_is_accepted(self, client, sheets):

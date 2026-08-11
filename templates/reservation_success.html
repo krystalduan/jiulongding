@@ -5,6 +5,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reservation Confirmed - JiuLongDing</title>
+    <!-- Start the background download immediately. A CSS background is
+         otherwise only discovered after the stylesheet has been fetched and
+         parsed, which is what made this page load slowly. -->
+    <link rel="preload" as="image" fetchpriority="high"
+          href="{{ url_for('static', filename='photos/hero-1200.webp') }}"
+          media="(max-width: 999px)">
+    <link rel="preload" as="image" fetchpriority="high"
+          href="{{ url_for('static', filename='photos/hero-1920.webp') }}"
+          media="(min-width: 1000px)">
     <link rel="preload" href="{{ url_for('static', filename='fonts/chineseFont-subset.woff2') }}" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="{{ url_for('static', filename='fonts/EBGaramond-VariableFont_wght.woff2') }}" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">

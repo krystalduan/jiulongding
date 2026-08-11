@@ -6,6 +6,7 @@ replaced with fakes, so nothing touches the real spreadsheet or sends
 anything to a customer.
 """
 import os
+import re
 import sys
 import types
 from datetime import datetime, timedelta
@@ -50,6 +51,7 @@ class FakeWorksheet:
     def __init__(self, title, rows=None):
         self.title = title
         self.rows = rows if rows is not None else []
+        self.batches = []
 
     def get_all_values(self):
         return self.rows
@@ -69,10 +71,37 @@ class FakeWorksheet:
         target[col - 1] = value
 
     def batch_update(self, updates):
-        pass
+        """Really apply the writes.
+
+        This used to be a no-op, which quietly made the sheet untestable:
+        the day-of SMS job records "already sent" markers through this
+        method, so a stub here would let duplicate-send tests pass no
+        matter what the code did.
+        """
+        self.batches.append(updates)
+        for update in updates:
+            for row, col, value in _parse_a1(update['range'], update['values']):
+                self.update_cell(row, col, value)
 
     def find(self, value, in_column=None):
         return None
+
+
+def _parse_a1(cell_range, values):
+    """'K5' + [['x']] -> [(5, 11, 'x')]. Single cells only, which is all the
+    app writes."""
+    match = re.fullmatch(r'([A-Z]+)(\d+)', cell_range.strip())
+    if not match:
+        return []
+    letters, row = match.group(1), int(match.group(2))
+    col = 0
+    for ch in letters:
+        col = col * 26 + (ord(ch) - ord('A') + 1)
+    out = []
+    for r_offset, row_values in enumerate(values):
+        for c_offset, value in enumerate(row_values):
+            out.append((row + r_offset, col + c_offset, value))
+    return out
 
 
 class FakeSpreadsheet:
@@ -130,14 +159,9 @@ def app_module():
     return flask_app
 
 
-@pytest.fixture(scope='session', autouse=True)
-def stop_scheduler():
-    """Shut the scheduler down before pytest closes its log streams."""
-    yield
-    try:
-        flask_app.scheduler.shutdown(wait=False)
-    except Exception:
-        pass
+# The in-process APScheduler was removed — day-of SMS is now driven by
+# GitHub Actions calling /api/send-sms-cron — so there is no longer a
+# background thread for the test session to shut down.
 
 
 # ---------------------------------------------------------------------------
