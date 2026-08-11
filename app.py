@@ -65,6 +65,28 @@ _sheets_lock = threading.Lock()
 _spreadsheet = None
 _sheet = None
 
+# Which spreadsheet to use. SPREADSHEET_KEY is the id from the sheet's URL:
+#   docs.google.com/spreadsheets/d/<THIS PART>/edit
+# Prefer it over the name — gc.open() matches by title, so two spreadsheets
+# called "Restaurant Reservations" resolve unpredictably and bookings can
+# land in the wrong one. The key is unique.
+SPREADSHEET_KEY = os.environ.get('SPREADSHEET_KEY', '').strip()
+SPREADSHEET_NAME = os.environ.get('SPREADSHEET_NAME', 'Restaurant Reservations').strip()
+MASTER_WORKSHEET = os.environ.get('MASTER_WORKSHEET', 'Master Data').strip()
+
+
+def _open_spreadsheet():
+    if SPREADSHEET_KEY:
+        sp = gc.open_by_key(SPREADSHEET_KEY)
+        logger.info(f"Opened spreadsheet by key: {sp.title}")
+        return sp
+    sp = gc.open(SPREADSHEET_NAME)
+    logger.warning(
+        f"Opened spreadsheet by name '{SPREADSHEET_NAME}' (id {sp.id}). "
+        "Set SPREADSHEET_KEY to remove any ambiguity between sheets sharing a name.")
+    return sp
+
+
 def get_sheets():
     global _spreadsheet, _sheet
     if _sheet is not None:
@@ -72,14 +94,13 @@ def get_sheets():
     with _sheets_lock:
         if _sheet is not None:
             return _spreadsheet, _sheet
+        sp = _open_spreadsheet()
         try:
-            sp = gc.open("Restaurant Reservations")
-            sh = sp.worksheet('Master Data')
-            logger.info(f"Connected to Google Sheets: {sh.title}")
+            sh = sp.worksheet(MASTER_WORKSHEET)
+            logger.info(f"Connected to Google Sheets: {sp.title} / {sh.title}")
         except gspread.exceptions.WorksheetNotFound:
-            sp = gc.open("Restaurant Reservations")
             sh = sp.get_worksheet(0)
-            logger.warning(f"'Master Data' not found, using: {sh.title}")
+            logger.warning(f"'{MASTER_WORKSHEET}' not found, using: {sh.title}")
         _spreadsheet, _sheet = sp, sh
         _ensure_booked_at_header(sh)
     return _spreadsheet, _sheet
