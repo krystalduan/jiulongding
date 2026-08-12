@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-lang="en">
 
 <head>
     <meta charset="UTF-8">
@@ -17,56 +17,98 @@
     <link rel="preload" href="{{ url_for('static', filename='fonts/chineseFont-subset.woff2') }}" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="{{ url_for('static', filename='fonts/EBGaramond-VariableFont_wght.woff2') }}" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script>
+        // Before first paint, so the chosen language never flashes. Shared
+        // with the manage page through the same localStorage key.
+        (function () {
+            try {
+                var saved = localStorage.getItem('jld-lang');
+                if (saved === 'zh' || saved === 'en') {
+                    document.documentElement.setAttribute('data-lang', saved);
+                    document.documentElement.lang = saved === 'zh' ? 'zh' : 'en';
+                }
+            } catch (e) { /* private mode: English default is fine */ }
+        })();
+    </script>
 </head>
 
 <body>
     <main>
         <section id="success-page" class="success-page">
             <div class="success-container">
-                <h1 class="success-title"> Reservation Received ~</h1>
-                <p class="success-message">Thank you! Your reservation request has been submitted successfully.</p>
+                <div class="lang-switch">
+                    <button type="button" class="lang-pill" id="lang-toggle"
+                            aria-label="Switch language / 切换语言">
+                        <span class="lang-opt lang-opt--en">EN</span><span
+                            class="lang-sep">|</span><span class="lang-opt lang-opt--zh">中</span>
+                    </button>
+                </div>
+
+                <h1 class="success-title brand-title">
+                    <span class="brand-zh chinese">九龙鼎重庆火锅</span>
+                    <span class="brand-en">JiuLongDing Chongqing Hotpot</span>
+                </h1>
+                <p class="success-message page-subtitle">
+                    <span class="lang-en">Your reservation has been received</span><span class="lang-zh">我们已收到您的预订</span>
+                </p>
+                <p class="success-message">
+                    <span class="lang-en">Thank you! Your reservation request has been submitted successfully.</span><span class="lang-zh">谢谢！您的预订申请已成功提交。</span>
+                </p>
 
                 <div class="reservation-details">
-                    <h2>Reservation Details:</h2>
+                    <h2><span class="lang-en">Reservation Details</span><span class="lang-zh">预订详情</span></h2>
                     <div class="detail-row">
-                        <span class="label">Name:</span>
+                        <span class="label"><span class="lang-en">Name</span><span class="lang-zh">姓名</span></span>
                         <span class="value">{{ name }}</span>
                     </div>
                     <div class="detail-row">
-                        <span class="label">Email:</span>
+                        <span class="label"><span class="lang-en">Email</span><span class="lang-zh">邮箱</span></span>
                         <span class="value">{{ email }}</span>
                     </div>
                     <div class="detail-row">
-                        <span class="label">Phone:</span>
+                        <span class="label"><span class="lang-en">Phone</span><span class="lang-zh">电话</span></span>
                         <span class="value">{{ phone }}</span>
                     </div>
 
                     <div class="detail-row">
-                        <span class="label">Date:</span>
-                        <span class="value">{{ date }}</span>
+                        <span class="label"><span class="lang-en">Date</span><span class="lang-zh">日期</span></span>
+                        <span class="value"><span class="lang-en">{{ date_en }}</span><span class="lang-zh">{{ date_zh }}</span></span>
                     </div>
                     <div class="detail-row">
-                        <span class="label">Time:</span>
+                        <span class="label"><span class="lang-en">Time</span><span class="lang-zh">时间</span></span>
                         <span class="value">{{ time }}</span>
                     </div>
                     <div class="detail-row">
-                        <span class="label">Number of People:</span>
+                        <span class="label"><span class="lang-en">Number of People</span><span class="lang-zh">人数</span></span>
                         <span class="value">{{ people }}</span>
                     </div>
                     <div class="detail-row">
-                        <span class="label">Dish Type:</span>
-                        <span class="value">{{ dish_type }}</span>
+                        <span class="label"><span class="lang-en">Dish Type</span><span class="lang-zh">锅底</span></span>
+                        <span class="value">{{ dish_type_both }}</span>
                     </div>
                 </div>
 
                 <div class="actions">
                     <!-- <a href="/" class="btn-primary">Make Another Reservation</a> -->
-                    <a href="/#home" class="btn-secondary">Back to Homepage</a>
+                    <a href="/#home" class="btn-secondary"><span class="lang-en">Back to Homepage</span><span class="lang-zh">返回首页</span></a>
                 </div>
             </div>
         </section>
     </main>
 
+    <script>
+        (function () {
+            var root = document.documentElement;
+            var toggle = document.getElementById('lang-toggle');
+            if (!toggle) return;
+            toggle.addEventListener('click', function () {
+                var next = root.getAttribute('data-lang') === 'zh' ? 'en' : 'zh';
+                root.setAttribute('data-lang', next);
+                root.lang = next;
+                try { localStorage.setItem('jld-lang', next); } catch (e) { /* private mode */ }
+            });
+        })();
+    </script>
 </body>
 
 </html>

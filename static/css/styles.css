@@ -788,6 +788,326 @@ body {
     color: #333;
 }
 
+/* Manage / cancel booking page ------------------------------------------- */
+
+.manage-container {
+    max-width: 560px;
+}
+
+.manage-notice {
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 24px;
+    font-size: 1rem;
+    text-align: center;
+}
+
+.manage-notice--success {
+    background: #e8f2e8;
+    color: #245c2c;
+    border: 1px solid #c3ddc6;
+}
+
+.manage-notice--error {
+    background: #fbeaea;
+    color: #8B1A1A;
+    border: 1px solid #eec9c9;
+}
+
+.manage-form {
+    margin: 28px 0 8px;
+}
+
+.manage-label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.manage-row {
+    display: flex;
+    gap: 12px;
+    align-items: stretch;
+    flex-wrap: wrap;
+    /* Each control sits on its own row, so the date and time dropdowns are
+       always exactly the same width as each other. */
+    margin-bottom: 18px;
+}
+
+.manage-row select {
+    flex: 1 1 100%;
+    width: 100%;
+    /* Identical box metrics to the other dropdown, whatever the option text. */
+    box-sizing: border-box;
+    padding: 12px 14px;
+    border: 1px solid #d8ccc3;
+    border-radius: 8px;
+    background: #fff;
+    font-family: inherit;
+    font-size: 1rem;
+    color: #1C1008;
+}
+
+.manage-row--submit {
+    margin-bottom: 10px;
+}
+
+.manage-row--submit .btn-primary {
+    flex: 1 1 100%;
+    width: 100%;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+.manage-row .btn-primary {
+    margin: 0;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 1rem;
+}
+
+.manage-hint {
+    color: #6f635b;
+    font-size: 0.95rem;
+    margin-top: 10px;
+}
+
+.manage-hint--block {
+    text-align: center;
+    margin: 28px 0;
+}
+
+.manage-hint a {
+    color: #8B1A1A;
+}
+
+/* ------------------------------------------------------------------------
+   "Back to Homepage" on the manage page.
+   A plain text link, not a filled button: it is the quietest thing on the
+   page, so it should not carry the same weight as Update or Cancel.
+   Change `margin-top` to sit it further from or closer to the card above.
+   ------------------------------------------------------------------------ */
+.actions--quiet {
+    margin-top: 14px;
+}
+
+.btn-back {
+    display: inline-block;
+    padding: 6px 10px;
+    background: none;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    text-decoration: none;
+    font-weight: bold;
+    color: #1C1008;
+    transition: color 0.18s ease;
+}
+
+.btn-back:hover,
+.btn-back:focus {
+    color: #7d736c;
+}
+
+/* ------------------------------------------------------------------------
+   Language switching.
+   Both languages are always in the HTML; only one is shown. `data-lang` on
+   <html> decides which, so a single attribute flips the whole page and there
+   is no per-element JavaScript.
+   ------------------------------------------------------------------------ */
+.lang-zh {
+    display: none;
+}
+
+[data-lang="zh"] .lang-en {
+    display: none;
+}
+
+[data-lang="zh"] .lang-zh {
+    display: inline;
+}
+
+/* The bundled webfont is subset to 九龙鼎重庆火锅, so everything except the
+   restaurant name needs a stack that is actually installed on the reader's
+   machine.
+
+   Song/Ming faces first, for the 复古 feel: these are the typefaces of printed
+   Chinese books, and they sit with the Garamond used for the English. Kaiti
+   (brush-written) follows as a warmer fallback, and only then a sans. */
+[data-lang="zh"] body,
+.lang-zh {
+    font-family: 'Songti SC', STSong, 'Noto Serif SC', 'Source Han Serif SC',
+        SimSun, 'Songti TC', STKaiti, KaiTi, 'PingFang SC', serif;
+    letter-spacing: 0.02em;
+}
+
+/* The pill: EN | 中, top right of the card. The inactive half is dimmed so it
+   reads as a switch rather than two separate buttons. */
+.lang-switch {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 6px;
+}
+
+.lang-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border: 1px solid #e0d6cd;
+    border-radius: 999px;
+    background: #fdfbf9;
+    font-family: inherit;
+    font-size: 0.85rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.lang-pill:hover,
+.lang-pill:focus-visible {
+    border-color: #c9b8ab;
+    background: #fff;
+}
+
+.lang-opt {
+    color: #b0a49b;
+    transition: color 0.18s ease;
+}
+
+.lang-sep {
+    color: #ded3ca;
+}
+
+/* Whichever language the page is in is the one lit up. */
+.lang-opt--en,
+[data-lang="zh"] .lang-opt--zh {
+    color: #8B1A1A;
+    font-weight: 600;
+}
+
+[data-lang="zh"] .lang-opt--en {
+    color: #b0a49b;
+    font-weight: normal;
+}
+
+/* ------------------------------------------------------------------------
+   Page heading. The restaurant name is the loudest thing on the card; what
+   the page is for sits under it, quieter.
+   ------------------------------------------------------------------------ */
+.brand-title {
+    font-size: 2.15rem;
+    letter-spacing: 0.02em;
+    margin-bottom: 4px;
+    line-height: 1.2;
+}
+
+/* The name reads top to bottom: Chinese, then the English under it. Both are
+   always shown — the name is the name in either language, so it is not part
+   of what the EN/中 switch hides.
+
+   The subset webfont covers exactly these seven characters, so the whole name
+   renders in it — the same face as the homepage masthead. `font-family` is
+   restated here on purpose: `.lang-zh` sets the body Chinese stack at the same
+   specificity as `.chinese`, so without a two-class selector the later rule
+   would win and the name would quietly fall back to Songti. */
+.brand-title .chinese {
+    font-family: 'chineseFont';
+}
+
+.brand-zh {
+    display: block;
+    font-size: 1.3em;
+    /* Tight: the characters should sit as one carved block, not spaced out. */
+    letter-spacing: 0.02em;
+    line-height: 1.25;
+}
+
+/* One line, always — the romanised name should not break across two. */
+.brand-en {
+    display: block;
+    font-size: 0.4em;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #b5675f;
+    white-space: nowrap;
+    margin-top: 10px;
+}
+
+.page-subtitle {
+    color: #6f635b;
+    font-size: 1.05rem;
+    margin-top: 0;
+    margin-bottom: 26px;
+}
+
+/* Cancelling is destructive and irreversible, so it is visually separated
+   from the reschedule form rather than sitting beside it. */
+.manage-danger {
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid #eee;
+    text-align: center;
+}
+
+.btn-cancel {
+    display: inline-block;
+    padding: 12px 24px;
+    border-radius: 8px;
+    border: 1px solid #d8b4b4;
+    background: transparent;
+    color: #8B1A1A;
+    font-family: inherit;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.btn-cancel:hover {
+    background: #fbeaea;
+}
+
+.btn-cancel--confirm {
+    background: #8B1A1A;
+    border-color: #8B1A1A;
+    color: #fff;
+    margin-right: 8px;
+}
+
+.btn-cancel--confirm:hover {
+    background: #741414;
+}
+
+.manage-confirm {
+    margin-top: 8px;
+}
+
+.manage-confirm-text {
+    color: #1C1008;
+    margin-bottom: 16px;
+}
+
+.manage-confirm .btn-secondary {
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 1rem;
+}
+
+@media (max-width: 480px) {
+    .manage-row {
+        flex-direction: column;
+    }
+
+    .manage-confirm .btn-secondary,
+    .btn-cancel--confirm {
+        display: block;
+        width: 100%;
+        margin: 8px 0 0;
+    }
+}
+
 
 /* Responsive Adjustments */
 

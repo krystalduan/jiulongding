@@ -50,20 +50,24 @@ function displayReservations(reservations) {
     const container = document.getElementById('reservationsContainer');
 
     container.innerHTML = reservations.map(reservation => {
-        const statusClass = reservation.confirmed.toLowerCase() === 'confirmed' || reservation.confirmed.toLowerCase() === 'yes'
-            ? 'status-confirmed'
-            : reservation.confirmed.toLowerCase() === 'cancelled' || reservation.confirmed.toLowerCase() === 'no'
-                ? 'status-cancelled'
-                : 'status-pending';
+        const status = reservation.confirmed.toLowerCase().trim();
 
-        const statusText = reservation.confirmed.toLowerCase() === 'confirmed' || reservation.confirmed.toLowerCase() === 'yes'
+        // 'Modified' is the row left behind when a customer moved this booking
+        // to another date. It is a record, not a table to serve, so it reads
+        // like a cancellation and offers no actions.
+        const statusText = status === 'confirmed' || status === 'yes'
             ? 'Confirmed'
-            : reservation.confirmed.toLowerCase() === 'cancelled' || reservation.confirmed.toLowerCase() === 'no'
+            : status === 'cancelled' || status === 'no'
                 ? 'Cancelled'
-                : 'Pending';
+                : status === 'modified'
+                    ? 'Modified'
+                    : 'Pending';
+
+        const statusClass = 'status-' + statusText.toLowerCase();
+        const isFinished = statusText === 'Cancelled' || statusText === 'Modified';
 
         return `
-            <div class="reservation-card"
+            <div class="reservation-card ${isFinished ? 'reservation-card--finished' : ''}"
                 data-row="${reservation.row_number}"
                 data-date="${reservation.date}">
                 <div class="reservation-header">
@@ -100,6 +104,7 @@ function displayReservations(reservations) {
                 <div class="status-container">
                     <span class="status-badge ${statusClass}">${statusText}</span>
                     <div class="quick-actions">
+                        ${statusText === 'Modified' ? '' : `
                         ${statusText !== 'Confirmed' ? `
                         <button class="action-btn btn-confirm" onclick="updateStatus('${reservation.date}', ${reservation.row_number}, 'Confirmed')">
                             Confirm
@@ -107,7 +112,7 @@ function displayReservations(reservations) {
                         ${statusText !== 'Cancelled' ? `
                         <button class="action-btn btn-cancel" onclick="updateStatus('${reservation.date}', ${reservation.row_number}, 'Cancelled')">
                             Cancel
-                        </button>` : ''}
+                        </button>` : ''}`}
                     </div>
                 </div>
             </div>

@@ -111,6 +111,47 @@ class TestReservationsApi:
         assert response.status_code in (400, 404)
 
 
+class TestTheOrderOfTheDay:
+    """Tables still to serve first, in service order; the rest below them."""
+
+    def _day(self, sheets, *statuses_and_times):
+        from conftest import FakeWorksheet
+        rows = [['Name', 'Time', 'People', 'Phone', 'Email', 'Date', 'Dish',
+                 'Notes', 'Confirmed', 'ID']]
+        for n, (status, time) in enumerate(statuses_and_times, start=1):
+            rows.append([f'Guest{n}', time, '3-4', '61412345678', 'g@x.com',
+                         '2026-01-01', '大火锅', '', status, str(n)])
+        sheets.date_sheets['2026-01-01'] = FakeWorksheet('2026-01-01', rows)
+
+    def _names(self, client):
+        login(client)
+        data = client.get('/staff/api/reservations/2026-01-01').get_json()
+        return [(r['name'], r['confirmed'], r['time']) for r in data['reservations']]
+
+    def test_live_bookings_come_first_in_time_order(self, client, sheets):
+        self._day(sheets, ('Pending', '20:00'), ('Confirmed', '18:00'),
+                  ('Pending', '19:00'))
+        assert [t for _, _, t in self._names(client)] == ['18:00', '19:00', '20:00']
+
+    def test_cancelled_and_modified_sink_to_the_bottom(self, client, sheets):
+        self._day(sheets, ('Cancelled', '12:00'), ('Modified', '12:30'),
+                  ('Pending', '20:30'), ('Confirmed', '20:00'))
+        statuses = [s for _, s, _ in self._names(client)]
+        assert statuses[:2] == ['Confirmed', 'Pending'], "live tables lead"
+        assert set(statuses[2:]) == {'Cancelled', 'Modified'}
+
+    def test_the_finished_ones_keep_time_order_among_themselves(self, client, sheets):
+        self._day(sheets, ('Modified', '20:00'), ('Cancelled', '12:00'),
+                  ('Pending', '13:00'))
+        assert [t for _, _, t in self._names(client)] == ['13:00', '12:00', '20:00']
+
+    def test_a_modified_booking_is_not_counted_as_pending(self, client, sheets):
+        self._day(sheets, ('Modified', '19:00'), ('Pending', '20:00'))
+        login(client)
+        data = client.get('/staff/api/reservations/2026-01-01').get_json()
+        assert data['total_pending'] == 1, "a table that moved is not still expected"
+
+
 class TestUpdateStatus:
 
     def _sheet_with_one_booking(self, sheets):

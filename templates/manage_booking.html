@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en" data-lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Your Booking - JiuLongDing</title>
+    <!-- Manage links arrive from email, so this page is often a cold first
+         visit. Same preload treatment as the confirmation page. -->
+    <link rel="preload" as="image" fetchpriority="high" href="{{ url_for('static', filename='photos/hero-1200.webp') }}"
+        media="(max-width: 999px)">
+    <link rel="preload" as="image" fetchpriority="high" href="{{ url_for('static', filename='photos/hero-1920.webp') }}"
+        media="(min-width: 1000px)">
+    <link rel="preload" href="{{ url_for('static', filename='fonts/chineseFont-subset.woff2') }}" as="font"
+        type="font/woff2" crossorigin>
+    <link rel="preload" href="{{ url_for('static', filename='fonts/EBGaramond-VariableFont_wght.woff2') }}" as="font"
+        type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <!-- Manage links should never be indexed or leak through a referrer. -->
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="referrer" content="no-referrer">
+    <script>
+        // Applied before first paint, so a reader who chose 中文 never sees a
+        // flash of English first. Kept inline for that reason.
+        (function () {
+            try {
+                var saved = localStorage.getItem('jld-lang');
+                if (saved === 'zh' || saved === 'en') {
+                    document.documentElement.setAttribute('data-lang', saved);
+                    document.documentElement.lang = saved === 'zh' ? 'zh' : 'en';
+                }
+            } catch (e) { /* private mode: English default is fine */ }
+        })();
+    </script>
+</head>
+
+<body>
+    <main>
+        <section class="success-page">
+            <div class="success-container manage-container">
+
+                <div class="lang-switch">
+                    <button type="button" class="lang-pill" id="lang-toggle" aria-label="Switch language / 切换语言">
+                        <span class="lang-opt lang-opt--en">EN</span><span class="lang-sep">|</span><span
+                            class="lang-opt lang-opt--zh">中</span>
+                    </button>
+                </div>
+
+                <h1 class="success-title brand-title">
+                    <span class="brand-zh chinese">九龙鼎重庆火锅</span>
+                    <span class="brand-en">JiuLongDing Chongqing Hotpot</span>
+                </h1>
+
+                {% if notice %}
+                <div class="manage-notice manage-notice--{{ notice[0] }}">
+                    <span class="lang-en">{{ notice[1] }}</span><span class="lang-zh">{{ notice[2] }}</span>
+                </div>
+                {% endif %}
+
+                {# ---------------- active booking ---------------- #}
+                {% if state == 'active' %}
+                <p class="success-message page-subtitle">
+                    <span class="lang-en">Modify or cancel your booking</span><span class="lang-zh">修改或取消您的预订</span>
+                </p>
+
+                <div class="reservation-details">
+                    <div class="detail-row">
+                        <span class="label"><span class="lang-en">Name</span><span class="lang-zh">姓名</span></span>
+                        <span class="value">{{ booking.name }}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label"><span class="lang-en">Date</span><span class="lang-zh">日期</span></span>
+                        <span class="value"><span class="lang-en">{{ booking.date }}</span><span class="lang-zh">{{ booking.date_zh }}</span></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label"><span class="lang-en">Time</span><span class="lang-zh">时间</span></span>
+                        <span class="value">{{ booking.time }}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label"><span class="lang-en">Number of People</span><span
+                                class="lang-zh">人数</span></span>
+                        <span class="value">{{ booking.people }}</span>
+                    </div>
+                    {% if booking.dish_type %}
+                    <div class="detail-row">
+                        <span class="label"><span class="lang-en">Dish Type</span><span
+                                class="lang-zh">菜类型</span></span>
+                        <span class="value"><span class="lang-en">{{ booking.dish_type_en }}</span><span class="lang-zh">{{ booking.dish_type }}</span></span>
+                    </div>
+                    {% endif %}
+                </div>
+
+                {% if dates and times %}
+                <form method="POST" action="{{ url_for('manage_booking_reschedule', token=token) }}" class="manage-form"
+                    id="change-form" data-manage="{{ url_for('manage_booking', token=token) }}">
+                    <label for="date" class="manage-label"><span class="lang-en">Change date</span><span
+                            class="lang-zh">更改日期</span></label>
+                    <div class="manage-row">
+                        <select id="date" name="date" required>
+                            {% for value, label_en, label_zh in dates %}
+                            <option value="{{ value }}" data-en="{{ label_en }}" data-zh="{{ label_zh }}"
+                                {% if value==selected_date %}selected{% endif %}>{{ label_en }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <label for="time" class="manage-label"><span class="lang-en">Change time</span><span
+                            class="lang-zh">更改时间</span></label>
+                    <div class="manage-row">
+                        <select id="time" name="time" required>
+                            {% for t in times %}
+                            <option value="{{ t }}" {% if t==booking.time %}selected{% endif %}>{{ t }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="manage-row manage-row--submit">
+                        <button type="submit" class="btn-primary"><span class="lang-en">Update booking</span><span
+                                class="lang-zh">更新预订</span></button>
+                    </div>
+
+                    <p class="manage-hint">
+                        {% if selected_date == today %}
+                        <span class="lang-en">Changes to a booking today need at least 2 hours' notice.</span><span
+                            class="lang-zh">当天更改需提前至少 2 小时。</span>
+                        {% else %}
+                        <span class="lang-en">To move a booking to today, please call us on <a
+                                href="tel:{{ restaurant_phone | replace(' ', '') }}">{{ restaurant_phone
+                                }}</a>.</span><span class="lang-zh">如需改到今天，请致电 <a
+                                href="tel:{{ restaurant_phone | replace(' ', '') }}">{{ restaurant_phone }}</a>。</span>
+                        {% endif %}
+                    </p>
+                </form>
+                {% else %}
+                <p class="manage-hint manage-hint--block">
+                    <span class="lang-en">It's too late to change this booking online.
+                        Please call us on <a href="tel:{{ restaurant_phone | replace(' ', '') }}">{{ restaurant_phone
+                            }}</a>.</span><span class="lang-zh">现在已无法在线更改，请致电 <a
+                            href="tel:{{ restaurant_phone | replace(' ', '') }}">{{ restaurant_phone }}</a>。</span>
+                </p>
+                {% endif %}
+
+                <div class="manage-danger">
+                    <button type="button" class="btn-cancel" id="cancel-start"><span class="lang-en">Cancel this
+                            booking</span><span class="lang-zh">取消预订</span></button>
+
+                    <div class="manage-confirm" id="cancel-confirm" hidden>
+                        <p class="manage-confirm-text">
+                            <span class="lang-en">Cancel your table on {{ booking.date }}
+                                at {{ booking.time }}? This can't be undone.</span><span class="lang-zh">确定取消 {{
+                                booking.date_zh }} {{ booking.time }} 的预订吗？此操作无法撤销。</span>
+                        </p>
+                        <form method="POST" action="{{ url_for('manage_booking_cancel', token=token) }}">
+                            <button type="submit" class="btn-cancel btn-cancel--confirm">
+                                <span class="lang-en">Yes, cancel it</span><span class="lang-zh">确认取消</span></button>
+                            <button type="button" class="btn-secondary" id="cancel-abort"><span class="lang-en">Keep my
+                                    booking</span><span class="lang-zh">保留预订</span></button>
+                        </form>
+                    </div>
+                </div>
+
+                {# ---------------- already cancelled ---------------- #}
+                {% elif state == 'cancelled' %}
+                <p class="success-message page-subtitle">
+                    <span class="lang-en">Booking cancelled</span><span class="lang-zh">预订已取消</span>
+                </p>
+                <p class="success-message">
+                    <span class="lang-en">Your table on {{ booking.date }} at {{ booking.time }} has been cancelled. We
+                        hope to see you another time.</span><span class="lang-zh">您在 {{ booking.date_zh }} {{
+                        booking.time }} 的预订已取消，期待下次光临。</span>
+                </p>
+                <p class="manage-hint">
+                    <span class="lang-en">Changed your mind? Please <a href="/book">make a new booking</a> or call us on
+                        <a href="tel:{{ restaurant_phone | replace(' ', '') }}">{{ restaurant_phone }}</a>.</span><span
+                        class="lang-zh">改变主意了？欢迎 <a href="/book">重新预订</a> 或致电 <a
+                            href="tel:{{ restaurant_phone | replace(' ', '') }}">{{ restaurant_phone }}</a>。</span>
+                </p>
+
+                {# ---------------- link no longer valid ---------------- #}
+                {% elif state == 'expired' %}
+                <p class="success-message page-subtitle">
+                    <span class="lang-en">Link expired</span><span class="lang-zh">链接已失效</span>
+                </p>
+                <p class="success-message">
+                    <span class="lang-en">This booking has already passed, so it can no longer be changed
+                        online.</span><span class="lang-zh">该预订日期已过，无法在线更改。</span>
+                </p>
+                <p class="manage-hint">
+                    <span class="lang-en">To make a new booking, visit <a href="/book">our booking page</a> or call <a
+                            href="tel:{{ restaurant_phone | replace(' ', '') }}">{{ restaurant_phone }}</a>.</span><span
+                        class="lang-zh">如需重新预订，请访问 <a href="/book">预订页面</a> 或致电 <a
+                            href="tel:{{ restaurant_phone | replace(' ', '') }}">{{ restaurant_phone }}</a>。</span>
+                </p>
+
+                {% elif state == 'notfound' %}
+                <p class="success-message page-subtitle">
+                    <span class="lang-en">Booking not found</span><span class="lang-zh">未找到预订</span>
+                </p>
+                <p class="success-message">
+                    <span class="lang-en">We couldn't find this reservation. It may have already been
+                        removed.</span><span class="lang-zh">未能找到该预订，可能已被删除。</span>
+                </p>
+                <p class="manage-hint">
+                    <span class="lang-en">Please call us on <a href="tel:{{ restaurant_phone | replace(' ', '') }}">{{
+                            restaurant_phone }}</a> and we'll sort it out.</span><span class="lang-zh">请致电 <a
+                            href="tel:{{ restaurant_phone | replace(' ', '') }}">{{ restaurant_phone
+                            }}</a>，我们会为您处理。</span>
+                </p>
+
+                {% elif state == 'error' %}
+                <p class="success-message page-subtitle">
+                    <span class="lang-en">Something went wrong</span><span class="lang-zh">出了一点问题</span>
+                </p>
+                <p class="success-message">
+                    <span class="lang-en">We couldn't reach your booking just now.</span><span
+                        class="lang-zh">暂时无法读取您的预订。</span>
+                </p>
+                <p class="manage-hint">
+                    <span class="lang-en">Please try again shortly, or call us on <a
+                            href="tel:{{ restaurant_phone | replace(' ', '') }}">{{ restaurant_phone }}</a>.</span><span
+                        class="lang-zh">请稍后再试，或致电 <a href="tel:{{ restaurant_phone | replace(' ', '') }}">{{
+                            restaurant_phone }}</a>。</span>
+                </p>
+
+                {% else %}
+                <p class="success-message page-subtitle">
+                    <span class="lang-en">Invalid link</span><span class="lang-zh">链接无效</span>
+                </p>
+                <p class="success-message">
+                    <span class="lang-en">This link doesn't look right. It may have been copied
+                        incompletely.</span><span class="lang-zh">该链接似乎不完整或有误。</span>
+                </p>
+                <p class="manage-hint">
+                    <span class="lang-en">Please use the link from your confirmation email, or call us on <a
+                            href="tel:{{ restaurant_phone | replace(' ', '') }}">{{ restaurant_phone }}</a>.</span><span
+                        class="lang-zh">请使用确认邮件中的链接，或致电 <a href="tel:{{ restaurant_phone | replace(' ', '') }}">{{
+                            restaurant_phone }}</a>。</span>
+                </p>
+                {% endif %}
+
+                <div class="actions actions--quiet">
+                    <a href="/#home" class="btn-back"><span class="lang-en">Back to Homepage</span><span
+                            class="lang-zh">返回首页</span></a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // Progressive enhancement: without JS the confirm panel is simply
+        // visible from the start, so cancelling still works — it just shows
+        // both steps at once rather than revealing the second on click.
+        (function () {
+            var start = document.getElementById('cancel-start');
+            var panel = document.getElementById('cancel-confirm');
+            var abort = document.getElementById('cancel-abort');
+            if (!start || !panel) return;
+
+            start.addEventListener('click', function () {
+                panel.hidden = false;
+                start.hidden = true;
+                panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            });
+            if (abort) {
+                abort.addEventListener('click', function () {
+                    panel.hidden = true;
+                    start.hidden = false;
+                });
+            }
+        })();
+
+        // Language pill. The choice is remembered, so a reader who switches to
+        // 中文 keeps it across the reschedule redirect and any later visit.
+        (function () {
+            var root = document.documentElement;
+            var toggle = document.getElementById('lang-toggle');
+            if (!toggle) return;
+
+            // A <select> shows one label per option, so the date picker cannot
+            // use the CSS swap the rest of the page relies on.
+            function applyOptionLabels(lang) {
+                var options = document.querySelectorAll('#date option[data-en]');
+                for (var i = 0; i < options.length; i++) {
+                    var wanted = options[i].getAttribute(lang === 'zh' ? 'data-zh' : 'data-en');
+                    if (wanted) options[i].textContent = wanted;
+                }
+            }
+
+            applyOptionLabels(root.getAttribute('data-lang'));
+
+            toggle.addEventListener('click', function () {
+                var next = root.getAttribute('data-lang') === 'zh' ? 'en' : 'zh';
+                root.setAttribute('data-lang', next);
+                root.lang = next;
+                applyOptionLabels(next);
+                try { localStorage.setItem('jld-lang', next); } catch (e) { /* private mode */ }
+            });
+        })();
+
+        // Which times are on offer depends on the date: today is trimmed to
+        // slots at least 2 hours out, every other day offers all of them.
+        // Reload with ?on= so the time list matches the date just picked.
+        // Without JS the list is simply the one for the booking's own date,
+        // and the server rejects any combination that isn't allowed.
+        (function () {
+            var form = document.getElementById('change-form');
+            var date = document.getElementById('date');
+            if (!form || !date) return;
+
+            var initial = date.value;
+            date.addEventListener('change', function () {
+                if (date.value === initial) return;
+                window.location = form.dataset.manage + '?on=' + encodeURIComponent(date.value);
+            });
+        })();
+    </script>
+</body>
+
+</html>

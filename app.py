@@ -4,6 +4,7 @@ from flask import Flask, render_template, request, redirect, url_for, jsonify, s
 from datetime import datetime, timedelta
 from functools import wraps
 from html import escape
+from itsdangerous import URLSafeSerializer, BadSignature
 import logging
 from pytz import timezone
 import threading
@@ -207,14 +208,187 @@ VALID_TIMES = {"12:00", "12:30", "13:00", "13:30",
 VALID_PARTY_SIZES = {"1-2", "3-4", "4-6", "7-10", "10+"}
 VALID_DISH_TYPES = {"大火锅", "小火锅", "炒菜"}
 
+# Zero-padded HH:MM sorts correctly as text, so this is service order.
+ORDERED_TIMES = sorted(VALID_TIMES)
+
 MAX_ADVANCE_DAYS = 32      # client picker allows ~1 month; keep server slightly lenient
+# How far ahead a customer may move an existing booking, counted from the day
+# they are making the change — not from the date the booking currently holds,
+# which would let a booking walk itself forward a month at a time.
+MAX_RESCHEDULE_DAYS = 30
 MIN_LEAD_MINUTES = 120     # same-day bookings must be at least 2 hours out
 MIN_FILL_SECONDS = 3       # a human cannot complete the form faster than this
+# Moving a booking that is already today needs the same 2 hours of notice as
+# making a new one, so the kitchen never learns of a change inside its prep
+# window. Moving a later booking *into* today is not self-service at all —
+# see reschedule_dates().
+MIN_RESCHEDULE_MINUTES = MIN_LEAD_MINUTES
 
 EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$')
 NAME_RE = re.compile(r'^[^\d<>{}\[\]\\/|]+$')
 
 MAX_LENGTHS = {'name': 80, 'email': 120, 'notes': 300}
+
+
+# =============================================================================
+# SELF-SERVICE MANAGE LINK
+# =============================================================================
+#
+# The confirmation email carries a link to /manage/<token>. The token is the
+# whole credential, so it is signed with SECRET_KEY and carries everything
+# needed to find the booking. Nothing is stored: no extra sheet column and no
+# lookup just to validate.
+#
+# Expiry is not baked into the signature — it comes from the booking date in
+# the payload, which is itself signed and so cannot be edited. A link works
+# until the day of the booking has passed.
+#
+# Note: rotating SECRET_KEY invalidates every outstanding link. That is the
+# accepted trade for keeping this stateless.
+
+MANAGE_TOKEN_SALT = 'jld-manage-booking-v1'
+PUBLIC_BASE_URL = os.environ.get('PUBLIC_BASE_URL', 'https://jiulongding.au').rstrip('/')
+
+_manage_serializer = URLSafeSerializer(app.secret_key, salt=MANAGE_TOKEN_SALT)
+
+
+def make_manage_token(reservation_id, date, email):
+    """Signed handle for one booking. Safe to put in a URL."""
+    return _manage_serializer.dumps({
+        'r': str(reservation_id),
+        'd': str(date),
+        'e': str(email or '').strip().lower(),
+    })
+
+
+def read_manage_token(token):
+    """Returns (payload, error_code). error_code is None when the token is good.
+
+    Codes: 'invalid' (missing, tampered or signed with another key),
+           'expired' (the booking date has passed).
+    """
+    try:
+        payload = _manage_serializer.loads(token)
+    except BadSignature:
+        return None, 'invalid'
+    except Exception:
+        return None, 'invalid'
+
+    if not isinstance(payload, dict) or not payload.get('d') or not payload.get('r'):
+        return None, 'invalid'
+
+    try:
+        booking_date = datetime.strptime(payload['d'], '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        return None, 'invalid'
+
+    if booking_date < datetime.now(sydney_tz).date():
+        return None, 'expired'
+
+    return payload, None
+
+
+def manage_url(reservation_id, date, email):
+    return f"{PUBLIC_BASE_URL}/manage/{make_manage_token(reservation_id, date, email)}"
+
+
+def available_times_for(target_date_str):
+    """Slots a customer may move to on a given date.
+
+    Every slot for a future date; on today, only those at least
+    MIN_RESCHEDULE_MINUTES away. Past dates offer nothing.
+    """
+    try:
+        target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        return []
+
+    now = datetime.now(sydney_tz)
+    if target_date > now.date():
+        return list(ORDERED_TIMES)
+    if target_date < now.date():
+        return []
+
+    minutes_now = now.hour * 60 + now.minute
+    out = []
+    for slot in ORDERED_TIMES:
+        hour, minute = (int(p) for p in slot.split(':'))
+        if (hour * 60 + minute) - minutes_now >= MIN_RESCHEDULE_MINUTES:
+            out.append(slot)
+    return out
+
+
+def reschedule_dates(current_date_str):
+    """Dates a customer may move this booking to.
+
+    Today is only ever offered to a booking that is *already* today. A booking
+    for tomorrow or later cannot be pulled forward into today online: that is a
+    same-day change to the kitchen's numbers, so it goes through the phone.
+    Moving out of today to a later date is always fine — it frees a table
+    rather than adding one.
+    """
+    try:
+        current_date = datetime.strptime(current_date_str, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        return []
+
+    today = datetime.now(sydney_tz).date()
+    if current_date < today:
+        return []
+
+    # Only a booking already on today keeps today as an option, and then only
+    # while a slot far enough out remains.
+    first = today if (current_date == today and available_times_for(str(today))) \
+        else today + timedelta(days=1)
+
+    return [str(first + timedelta(days=n))
+            for n in range((today + timedelta(days=MAX_RESCHEDULE_DAYS) - first).days + 1)]
+
+
+def describe_date(date_str):
+    """'2026-08-13' -> 'Thursday, 13 August 2026', for the picker and emails."""
+    try:
+        return datetime.strptime(date_str, '%Y-%m-%d').strftime('%A, %d %B %Y')
+    except (ValueError, TypeError):
+        return date_str
+
+
+WEEKDAYS_ZH = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
+
+
+def describe_date_zh(date_str):
+    """'2026-08-13' -> '2026年8月13日 星期四'."""
+    try:
+        d = datetime.strptime(date_str, '%Y-%m-%d')
+    except (ValueError, TypeError):
+        return date_str
+    return f'{d.year}年{d.month}月{d.day}日 {WEEKDAYS_ZH[d.weekday()]}'
+
+
+# The sheet stores the dish type in Chinese, because that is what the booking
+# form submits and what the kitchen reads. An English reader needs it back in
+# English rather than a character they cannot place.
+DISH_TYPE_EN = {
+    '大火锅': 'Shared Hotpot',
+    '小火锅': 'Individual Hotpot',
+    '炒菜': 'Stir-fry',
+}
+
+
+def dish_in_english(value):
+    """Chinese dish type as stored -> English. Unknown values pass through."""
+    return DISH_TYPE_EN.get(str(value or '').strip(), value)
+
+
+def dish_bilingual(value):
+    """'大火锅' -> '大火锅 · Shared Hotpot'.
+
+    For the confirmation email and the page it links from, which have no
+    language switch: the guest chose the dish in Chinese, so that stays, with
+    the English alongside it rather than in place of it.
+    """
+    english = dish_in_english(value)
+    return f'{value} · {english}' if english and english != value else (value or '')
 
 
 def sanitize_for_sheet(value):
@@ -362,29 +536,66 @@ def build_confirmation_email(customer_name, d):
         formatted_date = subject_date = d['date']
 
     phone = format_phone_display(d.get('phone'))
-    dish = d.get('dish_type') or 'Not specified'
+    # Chinese as chosen, with the English gloss beside it — an email has no
+    # language switch, so it has to carry both.
+    dish = dish_bilingual(d.get('dish_type')) or 'Not specified'
     people = d.get('people', '')
+
+    # Self-service link. Only produced when we know which booking this is —
+    # a resend without a reservation id simply omits the button.
+    manage_link = ''
+    if d.get('reservation_id'):
+        try:
+            manage_link = manage_url(d['reservation_id'], d['date'], d.get('email'))
+        except Exception:
+            logger.exception("Could not build manage link; sending email without it")
 
     subject = f"Your reservation at JiuLongDing Hotpot | {subject_date}"
 
-    # Raw values here — row_html escapes each one exactly once.
+    # Table-wrapped anchor rather than a padded <a>: Outlook renders mail with
+    # Word, which drops padding on inline elements, so a plain styled link
+    # collapses to bare text there.
+    manage_button_html = ''
+    if manage_link:
+        manage_button_html = f"""
+        <tr><td align="center" style="padding:4px 32px 30px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+            <tr><td bgcolor="#8B1A1A" style="border-radius:8px;">
+              <a href="{escape(manage_link, quote=True)}"
+                 style="display:inline-block;padding:13px 28px;font-family:{EMAIL_FONT};
+                        font-size:15px;color:#ffffff;text-decoration:none;font-weight:600;
+                        border-radius:8px;">Change or cancel your booking&nbsp;·&nbsp;<span
+                        style="font-family:{EMAIL_FONT_CN};">更改或取消预订</span></a>
+            </td></tr>
+          </table>
+          <p style="margin:12px 0 0;font-family:{EMAIL_FONT};font-size:12px;color:#a89a91;">
+            Same-day changes need at least 2 hours' notice.<br>
+            <span style="font-family:{EMAIL_FONT_CN};">当天更改需提前至少 2 小时。</span></p>
+        </td></tr>"""
+
+    # Raw values here — row_html escapes each one exactly once. The Chinese
+    # label sits under the English one in its own font stack, because the
+    # serif stack above has no Chinese glyphs and clients would substitute
+    # something that does not match the rest of the mail.
     rows = [
-        ('Name', str(customer_name)),
-        ('Date', formatted_date),
-        ('Time', d['time']),
-        ('Party size', f'{people} people'),
-        ('Dish type', dish),
-        ('Contact', phone),
+        ('Name', '姓名', str(customer_name)),
+        ('Date', '日期', formatted_date),
+        ('Time', '时间', d['time']),
+        ('Party size', '人数', f'{people} people'),
+        ('Dish type', '锅底', dish),
+        ('Contact', '电话', phone),
     ]
     row_html = ''.join(
         f'''
         <tr>
           <td style="padding:11px 0;border-bottom:1px solid #ece3dc;
                      font-size:13px;letter-spacing:.06em;text-transform:uppercase;
-                     color:#8a7f77;width:38%;">{escape(label)}</td>
+                     color:#8a7f77;width:38%;">{escape(label)}<br>
+            <span style="font-family:{EMAIL_FONT_CN};font-size:12px;
+                         letter-spacing:.04em;color:#a89a91;">{escape(zh)}</span></td>
           <td style="padding:11px 0;border-bottom:1px solid #ece3dc;
                      font-size:16px;color:#1C1008;font-weight:600;">{escape(str(value))}</td>
-        </tr>''' for label, value in rows)
+        </tr>''' for label, zh, value in rows)
 
     html_body = f"""<!doctype html>
 <html>
@@ -439,12 +650,19 @@ def build_confirmation_email(customer_name, d):
           </table>
         </td></tr>
 
-        <tr><td style="padding:22px 32px 30px;">
+        <tr><td style="padding:22px 32px {'14px' if manage_link else '30px'};">
           <p style="margin:0;font-family:{EMAIL_FONT};font-size:14px;
                     line-height:1.7;color:#5d534c;">
             We hold tables for <strong style="color:#1C1008;">15 minutes</strong>.
-            To change or cancel, please call us with your name and booking date.</p>
+            {'Need to make a change? Use the button below.'
+             if manage_link else
+             'To change or cancel, please call us with your name and booking date.'}<br>
+            <span style="font-family:{EMAIL_FONT_CN};font-size:13px;">
+              我们为您保留座位 15 分钟。{'如需更改，请点击下方按钮。'
+              if manage_link else '如需更改或取消，请致电我们。'}</span></p>
         </td></tr>
+
+        {manage_button_html}
 
         <tr><td align="center"
                 style="background:#faf5f1;padding:20px 32px;border-top:1px solid #f0e6dd;">
@@ -461,21 +679,28 @@ def build_confirmation_email(customer_name, d):
 </body>
 </html>"""
 
-    detail_lines = '\n'.join(f'  {label}: {value}' for label, value in rows)
+    if manage_link:
+        manage_text = (f"\nCHANGE OR CANCEL 更改或取消\n  {manage_link}\n"
+                       "  (same-day changes need at least 2 hours' notice)\n"
+                       "  (当天更改需提前至少 2 小时)\n")
+    else:
+        manage_text = ("To change or cancel, please call us with your name\n"
+                       "and booking date. 如需更改或取消，请致电我们。\n")
+
+    detail_lines = '\n'.join(f'  {label} {zh}: {value}' for label, zh, value in rows)
     text_body = f"""JIULONGDING 九龙鼎 - CHONGQING HOTPOT
 
 
-YOUR BOOKING
+YOUR BOOKING 您的预订
 {detail_lines}
 
-FINDING US
+FINDING US 地址
   71 Dixon Street (up the stairs)
   Haymarket, Sydney NSW 2000
   {RESTAURANT_PHONE}
 
-We hold tables for 15 minutes. To change or cancel, please call us
-with your name and booking date.
-
+We hold tables for 15 minutes. 我们为您保留座位 15 分钟。
+{manage_text}
 JiuLongDing Chongqing Hotpot (九龙鼎重庆火锅)
 {RESTAURANT_ADDRESS}
 """
@@ -525,21 +750,34 @@ def send_email_async(email, name, reservation_data):
         logger.error(f"Background email error: {e}")
 
 
+DATE_TAB_HEADERS = ["Name", "Time", "People", "Phone", "Email", "Date",
+                    "Dish Type", "Notes", "Confirmed", "Reservation ID",
+                    "SMS Reply", "Confirmation Method"]
+
+
+def get_or_create_date_sheet(spreadsheet, date):
+    """The tab for one date, created with headers if it does not exist yet.
+
+    Shared by new bookings and by a customer moving an existing booking to a
+    date nobody has booked yet.
+    """
+    sheet_name = str(date).replace('/', '-')
+    try:
+        return spreadsheet.worksheet(sheet_name)
+    except gspread.WorksheetNotFound:
+        date_sheet = spreadsheet.add_worksheet(title=sheet_name, rows="100", cols="12")
+        date_sheet.append_row(DATE_TAB_HEADERS)
+        date_sheet.format("A1:L1", {
+            "textFormat": {"bold": True},
+            "backgroundColor": {"red": 0.2, "green": 0.6, "blue": 0.9}
+        })
+        return date_sheet
+
+
 def create_date_sheet(name, phone, email, people, date, time, dish_type, notes, reservation_id):
     spreadsheet, _ = get_sheets()
     try:
-        sheet_name = str(date).replace('/', '-')
-        try:
-            date_sheet = spreadsheet.worksheet(sheet_name)
-        except gspread.WorksheetNotFound:
-            date_sheet = spreadsheet.add_worksheet(title=sheet_name, rows="100", cols="12")
-            headers = ["Name", "Time", "People", "Phone", "Email", "Date",
-                       "Dish Type", "Notes", "Confirmed", "Reservation ID", "SMS Reply", "Confirmation Method"]
-            date_sheet.append_row(headers)
-            date_sheet.format("A1:L1", {
-                "textFormat": {"bold": True},
-                "backgroundColor": {"red": 0.2, "green": 0.6, "blue": 0.9}
-            })
+        date_sheet = get_or_create_date_sheet(spreadsheet, date)
         date_sheet.append_row([name, time, people, phone, email, date,
                                 dish_type, notes, "Pending", reservation_id or ""])
     except Exception as e:
@@ -844,7 +1082,417 @@ def reservation_success():
     reservation_data = session.get('last_reservation')
     if not reservation_data:
         return redirect('/')
-    return render_template('reservation_success.html', **reservation_data)
+    # The session holds the raw submitted values: an ISO date and a Chinese
+    # dish type. Both need a readable form in each language.
+    return render_template(
+        'reservation_success.html',
+        date_en=describe_date(reservation_data.get('date')),
+        date_zh=describe_date_zh(reservation_data.get('date')),
+        dish_type_en=dish_in_english(reservation_data.get('dish_type')),
+        dish_type_both=dish_bilingual(reservation_data.get('dish_type')),
+        **reservation_data)
+
+# =============================================================================
+# CUSTOMER SELF-SERVICE — cancel or move a booking
+# =============================================================================
+#
+# The emailed link is GET-only and never changes anything. Both mutations are
+# POST, because corporate mail scanners and some clients pre-fetch every URL
+# in a message: a one-click GET /cancel would be silently triggered by a spam
+# filter and cancel real bookings.
+
+# Column positions in a date tab (0-based), per DATE_TAB_HEADERS.
+COL_NAME, COL_TIME, COL_PEOPLE, COL_PHONE, COL_EMAIL = 0, 1, 2, 3, 4
+COL_DATE, COL_DISH, COL_NOTES, COL_CONFIRMED, COL_RES_ID = 5, 6, 7, 8, 9
+COL_METHOD = 11                       # column L
+CANCELLED_STATUS = 'Cancelled'
+# Left behind in the old date's tab when a customer moves to another day, so
+# staff can see the booking was here and where it went, instead of a row that
+# silently disappears overnight.
+MODIFIED_STATUS = 'Modified'
+# Statuses that are a record of something that is no longer happening. They
+# sort below the live bookings and are never texted.
+FINISHED_STATUSES = {CANCELLED_STATUS.lower(), MODIFIED_STATUS.lower(), 'no'}
+
+# Column positions in Master Data (0-based), per submit_reservation_route().
+MASTER_ID, MASTER_DATE, MASTER_TIME, MASTER_EMAIL = 0, 2, 3, 7
+
+
+def _scan_tab(date_sheet, want_id, want_email):
+    """Find one booking's row inside an already-opened date tab.
+
+    Rows marked Modified are skipped: they are the record of a booking that
+    used to be on this date, and the live row is in another tab.
+    """
+    for i, row in enumerate(date_sheet.get_all_values()[1:], start=2):
+        if len(row) <= COL_RES_ID:
+            continue
+        if str(row[COL_RES_ID]).strip() != want_id:
+            continue
+        if str(row[COL_CONFIRMED]).strip().lower() == MODIFIED_STATUS.lower():
+            continue
+        # Second check: ids come from a row count, so an edited sheet could in
+        # principle reuse one. The email must match the signed token too.
+        if want_email and str(row[COL_EMAIL]).strip().lower() != want_email:
+            logger.warning(f"Manage link: id {want_id} found but email mismatch")
+            continue
+        return i, row
+    return None, None
+
+
+def master_date_for(want_id, want_email):
+    """Where Master Data says this booking now sits, or None.
+
+    Master Data is the only index from reservation id to date, so it is what
+    lets a link emailed before a date change still find the booking after it.
+    """
+    try:
+        _, master = get_sheets()
+        for row in master.get_all_values()[1:]:
+            if len(row) <= MASTER_EMAIL:
+                continue
+            if str(row[MASTER_ID]).strip() != want_id:
+                continue
+            if want_email and str(row[MASTER_EMAIL]).strip().lower() != want_email:
+                continue
+            return str(row[MASTER_DATE]).strip().replace('/', '-')
+    except Exception:
+        logger.exception("Manage link: Master Data lookup failed")
+    return None
+
+
+def find_booking(payload):
+    """Locate a booking's row in its date tab.
+
+    Returns (date_sheet, row_number, row) or (None, None, None).
+
+    The token carries the date the booking had when the link was sent. If the
+    customer has since moved it, that tab no longer holds the row, so fall back
+    to Master Data for its current date — otherwise every link already sitting
+    in an inbox would break the moment someone changed their date.
+    """
+    spreadsheet, _ = get_sheets()
+    want_id = str(payload['r']).strip()
+    want_email = str(payload.get('e') or '').strip().lower()
+
+    tried = str(payload['d']).replace('/', '-')
+    candidates = [tried]
+
+    moved_to = master_date_for(want_id, want_email)
+    if moved_to and moved_to != tried:
+        logger.info(f"Manage link: booking {want_id} has moved {tried} -> {moved_to}")
+        candidates.append(moved_to)
+
+    for sheet_name in candidates:
+        try:
+            date_sheet = spreadsheet.worksheet(sheet_name)
+        except gspread.WorksheetNotFound:
+            logger.warning(f"Manage link: no date sheet for {sheet_name}")
+            continue
+        row_number, row = _scan_tab(date_sheet, want_id, want_email)
+        if row is not None:
+            return date_sheet, row_number, row
+
+    return None, None, None
+
+
+def update_master_booking(want_id, want_email, new_date, new_time):
+    """Keep Master Data's date and time in step with a change.
+
+    Best-effort: a booking that has been changed but whose index is stale is
+    still a booking the customer can reach through the new link, so a failure
+    here must not fail their change.
+    """
+    try:
+        _, master = get_sheets()
+        for i, row in enumerate(master.get_all_values()[1:], start=2):
+            if len(row) <= MASTER_EMAIL:
+                continue
+            if str(row[MASTER_ID]).strip() != want_id:
+                continue
+            if want_email and str(row[MASTER_EMAIL]).strip().lower() != want_email:
+                continue
+            master.batch_update([
+                {'range': f'C{i}', 'values': [[new_date]]},
+                {'range': f'D{i}', 'values': [[new_time]]},
+            ])
+            return True
+    except Exception:
+        logger.exception("Manage link: Master Data update failed")
+    return False
+
+
+def move_booking_row(spreadsheet, old_sheet, row_number, row, new_date, new_time, note):
+    """Move a booking into the tab for new_date, returning the new tab.
+
+    The old row is kept and marked Modified rather than deleted, so a table
+    that was on the books for this date leaves a trace: staff opening the day
+    can see the booking moved and where it went. The live row is the new one.
+
+    Written in that order on purpose — the destination row exists before the
+    old one is marked, so a failure between the two leaves a booking that is
+    still visibly live on its original date rather than one that is nowhere.
+    """
+    moved = list(row) + [''] * max(0, len(DATE_TAB_HEADERS) - len(row))
+    moved[COL_TIME] = new_time
+    moved[COL_DATE] = new_date
+    moved[COL_METHOD] = note
+
+    target = get_or_create_date_sheet(spreadsheet, new_date)
+    target.append_row(moved[:len(DATE_TAB_HEADERS)])
+
+    old_sheet.batch_update([
+        {'range': f'I{row_number}', 'values': [[MODIFIED_STATUS]]},
+        {'range': f'L{row_number}', 'values': [[note]]},
+    ])
+    return target
+
+
+def booking_view(row):
+    """Template-friendly view of a date-tab row."""
+    def cell(index):
+        return row[index] if len(row) > index else ''
+
+    return {
+        'name': cell(COL_NAME),
+        'time': cell(COL_TIME),
+        'people': cell(COL_PEOPLE),
+        'phone': format_phone_display(cell(COL_PHONE)),
+        # Stored in Chinese; the page shows whichever half the reader asked for.
+        'dish_type': cell(COL_DISH),
+        'dish_type_en': dish_in_english(cell(COL_DISH)),
+        'date_raw': cell(COL_DATE),
+        'date': describe_date(cell(COL_DATE)),
+        'date_zh': describe_date_zh(cell(COL_DATE)),
+        'status': cell(COL_CONFIRMED) or 'Pending',
+        'reservation_id': cell(COL_RES_ID),
+    }
+
+
+def render_manage(state, token=None, booking=None, times=None, dates=None,
+                  selected_date=None, notice=None, status_code=200):
+    return render_template(
+        'manage_booking.html',
+        state=state,
+        token=token,
+        booking=booking,
+        times=times or [],
+        # (value, English label, Chinese label) — a <select> can only hold one
+        # label per option, so the page swaps them when the language changes.
+        dates=[(d, describe_date(d), describe_date_zh(d)) for d in (dates or [])],
+        selected_date=selected_date,
+        today=str(datetime.now(sydney_tz).date()),
+        notice=notice,
+        restaurant_phone=RESTAURANT_PHONE,
+    ), status_code
+
+
+def render_active(token, booking, notice=None, on_date=None, status_code=200):
+    """The editable page, with the pickers built for whichever date is shown."""
+    dates = reschedule_dates(booking['date_raw'])
+    shown = on_date or booking['date_raw']
+
+    # Late in the evening a booking for today has no slot left today, but it can
+    # still be moved to a later day. Show the first date it *can* move to rather
+    # than an empty time list, which would read as "no changes possible".
+    if not available_times_for(shown) and dates:
+        shown = dates[0]
+
+    return render_manage('active', token=token, booking=booking,
+                         dates=dates,
+                         times=available_times_for(shown),
+                         selected_date=shown,
+                         notice=notice, status_code=status_code)
+
+
+def load_managed_booking(token):
+    """Shared front door for all three routes.
+
+    Returns (payload, date_sheet, row_number, row, error_response). When
+    error_response is not None the caller should return it unchanged.
+    """
+    payload, error = read_manage_token(token)
+    if error == 'expired':
+        return None, None, None, None, render_manage('expired', status_code=410)
+    if error:
+        return None, None, None, None, render_manage('invalid', status_code=400)
+
+    try:
+        date_sheet, row_number, row = find_booking(payload)
+    except Exception:
+        logger.exception("Manage link: sheet lookup failed")
+        return None, None, None, None, render_manage('error', status_code=503)
+
+    if row is None:
+        return None, None, None, None, render_manage('notfound', status_code=404)
+
+    return payload, date_sheet, row_number, row, None
+
+
+@app.route('/manage/<token>')
+def manage_booking(token):
+    _, _, _, row, error_response = load_managed_booking(token)
+    if error_response:
+        return error_response
+
+    booking = booking_view(row)
+    if booking['status'].strip().lower().startswith('cancelled'):
+        return render_manage('cancelled', token=token, booking=booking)
+
+    # A move redirects here rather than rendering in place, so the address bar
+    # ends up holding a link that still works. The details below are re-read
+    # from the sheet, so this message only appears over a change that landed.
+    notice = None
+    if request.args.get('moved'):
+        notice = ('success',
+                  f"Your booking has been moved to {booking['date']} at {booking['time']}.",
+                  f"您的预订已改为 {booking['date_raw']} {booking['time']}。")
+
+    # ?on=<date> previews another day's slots, so picking a date can refresh the
+    # time list. Only dates the customer may actually move to are honoured.
+    wanted = (request.args.get('on') or '').strip()
+    on_date = wanted if wanted in reschedule_dates(booking['date_raw']) else None
+
+    return render_active(token, booking, notice=notice, on_date=on_date)
+
+
+@app.route('/manage/<token>/cancel', methods=['POST'])
+def manage_booking_cancel(token):
+    if rate_limited('manage', limit=20, window_seconds=3600):
+        return render_manage('error', status_code=429)
+
+    payload, date_sheet, row_number, row, error_response = load_managed_booking(token)
+    if error_response:
+        return error_response
+
+    booking = booking_view(row)
+    if booking['status'].strip().lower().startswith('cancelled'):
+        return render_manage('cancelled', token=token, booking=booking)
+
+    stamp = datetime.now(sydney_tz).strftime('%d/%m/%y %H:%M')
+    try:
+        date_sheet.batch_update([
+            {'range': f'I{row_number}', 'values': [[CANCELLED_STATUS]]},
+            {'range': f'L{row_number}', 'values': [[f'Cancelled by customer {stamp}']]},
+        ])
+    except Exception:
+        logger.exception("Manage link: cancel write failed")
+        return render_active(token, booking, status_code=503,
+                             notice=('error', "Sorry, something went wrong. "
+                                              f"Please call us on {RESTAURANT_PHONE}.",
+                                      f"抱歉，出了一点问题，请致电我们 {RESTAURANT_PHONE}。"))
+
+    logger.info(f"Booking {booking['reservation_id']} cancelled by customer")
+    # Marking column I stops the 8:30 reminder: that job only texts "Pending".
+    booking['status'] = CANCELLED_STATUS
+    return render_manage('cancelled', token=token, booking=booking)
+
+
+@app.route('/manage/<token>/reschedule', methods=['POST'])
+def manage_booking_reschedule(token):
+    if rate_limited('manage', limit=20, window_seconds=3600):
+        return render_manage('error', status_code=429)
+
+    payload, date_sheet, row_number, row, error_response = load_managed_booking(token)
+    if error_response:
+        return error_response
+
+    booking = booking_view(row)
+    if booking['status'].strip().lower().startswith('cancelled'):
+        return render_manage('cancelled', token=token, booking=booking)
+
+    old_date, old_time = booking['date_raw'], booking['time']
+    new_time = (request.form.get('time') or '').strip()
+    # No date field at all means an older cached copy of the form: treat it as
+    # a time-only change rather than rejecting the customer.
+    new_date = (request.form.get('date') or old_date).strip()
+
+    def reject(message, zh, on_date=None):
+        return render_active(token, booking, on_date=on_date,
+                             notice=('error', message, zh), status_code=400)
+
+    if not new_time:
+        return reject('Please choose a new time.', '请选择新的时间。')
+    if new_time not in VALID_TIMES:
+        return reject('That is not one of our service times.', '该时间不在营业时段内。')
+
+    try:
+        target = datetime.strptime(new_date, '%Y-%m-%d').date()
+        current = datetime.strptime(old_date, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        return reject('Please choose a valid date.', '请选择有效的日期。')
+
+    today = datetime.now(sydney_tz).date()
+    if target < today:
+        return reject('That date has already passed.', '该日期已过。')
+    if target > today + timedelta(days=MAX_RESCHEDULE_DAYS):
+        return reject(f'Bookings can only be moved up to {MAX_RESCHEDULE_DAYS} days ahead.',
+                      f'预订最多只能改到 {MAX_RESCHEDULE_DAYS} 天内。')
+
+    # Pulling a later booking forward into today is a same-day change to the
+    # kitchen's numbers, so it is not self-service.
+    if target == today and current != today:
+        return reject('To move a booking to today, please call us on '
+                      f'{RESTAURANT_PHONE} so we can check we have room.',
+                      f'如需改到今天，请致电我们 {RESTAURANT_PHONE}。')
+
+    if new_date == old_date and new_time == old_time:
+        return reject('That is already your booking time.', '这已经是您当前的预订时间。')
+
+    times = available_times_for(new_date)
+    if new_time not in times:
+        if not times:
+            return reject("It's too late to move to that day online. "
+                          f'Please call us on {RESTAURANT_PHONE}.',
+                          f'现在已无法在线更改，请致电我们 {RESTAURANT_PHONE}。',
+                          on_date=new_date)
+        return reject("Changes to a booking today need at least 2 hours' notice. "
+                      f'Please pick a later time or call us on {RESTAURANT_PHONE}.',
+                      '当天更改需提前至少 2 小时，请选择更晚的时间或致电我们。',
+                      on_date=new_date)
+
+    stamp = datetime.now(sydney_tz).strftime('%d/%m/%y %H:%M')
+    moving_day = new_date != old_date
+    note = (f'Moved by customer {old_date} {old_time} to {new_date} {new_time} {stamp}'
+            if moving_day else
+            f'Time changed by customer {old_time} to {new_time} {stamp}')
+
+    try:
+        if moving_day:
+            # The row lives in the tab named after its date, so a new date means
+            # a different tab.
+            spreadsheet, _ = get_sheets()
+            move_booking_row(spreadsheet, date_sheet, row_number, row,
+                             new_date, new_time, note)
+        else:
+            date_sheet.batch_update([
+                {'range': f'B{row_number}', 'values': [[new_time]]},
+                {'range': f'L{row_number}', 'values': [[note]]},
+            ])
+    except Exception:
+        logger.exception("Manage link: reschedule write failed")
+        return reject('Sorry, something went wrong. '
+                      f'Please call us on {RESTAURANT_PHONE}.',
+                      f'抱歉，出了一点问题，请致电我们 {RESTAURANT_PHONE}。')
+
+    logger.info(f"Booking {booking['reservation_id']}: {note}")
+    # Keeps the staff's master list truthful, and is what lets the link already
+    # sitting in the customer's inbox find the booking in its new tab.
+    update_master_booking(str(booking['reservation_id']),
+                          str(payload.get('e') or ''), new_date, new_time)
+
+    if moving_day:
+        # Redirect so the address bar ends up holding a token that points at
+        # the new tab, and so the page shown is a fresh read of the moved row.
+        return redirect(url_for('manage_booking',
+                                token=make_manage_token(booking['reservation_id'],
+                                                        new_date, payload.get('e')),
+                                moved=1))
+
+    booking['time'] = new_time
+    return render_active(token, booking,
+                         notice=('success', f'Your booking has been moved to {new_time}.',
+                                 f'您的预订时间已改为 {new_time}。'))
 
 # =============================================================================
 # STAFF ROUTES
@@ -930,7 +1578,13 @@ def get_reservations(date):
                     continue
             return datetime.strptime('12:00', '%H:%M').time()
 
-        reservations.sort(key=lambda x: parse_time(x['time']))
+        # Tables still to serve come first, in service order. Cancelled and
+        # moved bookings are kept for the record but sink to the bottom, so a
+        # glance down the page is the run of the night.
+        reservations.sort(key=lambda x: (
+            x['confirmed'].strip().lower() in FINISHED_STATUSES,
+            parse_time(x['time']),
+        ))
 
         return jsonify({
             'success': True,

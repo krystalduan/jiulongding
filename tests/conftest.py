@@ -83,6 +83,11 @@ class FakeWorksheet:
             for row, col, value in _parse_a1(update['range'], update['values']):
                 self.update_cell(row, col, value)
 
+    def delete_rows(self, index):
+        """1-based, like gspread. Used when a booking moves to another date."""
+        if 1 <= index <= len(self.rows):
+            self.rows.pop(index - 1)
+
     def find(self, value, in_column=None):
         return None
 

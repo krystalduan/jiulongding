@@ -252,6 +252,25 @@ body {
     border: 1px solid #fecaca;
 }
 
+/* The row left behind when a customer moved this booking to another date.
+   Same red as a cancellation: neither is a table to lay. */
+.status-modified {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+}
+
+/* Cancelled and moved bookings sort to the bottom of the list. Fading them
+   keeps the run of the night readable without hiding the record. */
+.reservation-card--finished {
+    opacity: 0.65;
+}
+
+.reservation-card--finished:hover,
+.reservation-card--finished:focus-within {
+    opacity: 1;
+}
+
 .quick-actions {
     display: flex;
     gap: 8px;
