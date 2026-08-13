@@ -70,6 +70,29 @@ class FakeWorksheet:
             target.append('')
         target[col - 1] = value
 
+    def update(self, values, range_name=None, **kwargs):
+        """gspread 6 takes the values first and the range second.
+
+        Raising on the old gspread 5 order is the point: the app had a call left
+        the other way round, and a fake that quietly accepted either would have
+        let it keep passing tests while failing in production.
+        """
+        if not isinstance(values, (list, tuple)):
+            raise TypeError('update() takes the values first, then the range')
+
+        row, col = 1, 1
+        if range_name:
+            match = re.match(r'([A-Z]+)(\d+)', str(range_name).split(':')[0].strip())
+            if match:
+                col = 0
+                for ch in match.group(1):
+                    col = col * 26 + (ord(ch) - ord('A') + 1)
+                row = int(match.group(2))
+
+        for r_offset, row_values in enumerate(values):
+            for c_offset, value in enumerate(row_values):
+                self.update_cell(row + r_offset, col + c_offset, value)
+
     def batch_update(self, updates):
         """Really apply the writes.
 
@@ -113,6 +136,10 @@ class FakeSpreadsheet:
     def __init__(self):
         self.master = FakeWorksheet('Master Data', [['id', 'name', 'date']])
         self.date_sheets = {}
+        # Every call that would cost a Google Sheets API read, so tests can
+        # assert the upcoming view stays at two of them however many tabs
+        # there are.
+        self.reads = []
 
     def worksheet(self, name):
         if name in self.date_sheets:
@@ -123,6 +150,30 @@ class FakeSpreadsheet:
         sheet = FakeWorksheet(title)
         self.date_sheets[title] = sheet
         return sheet
+
+    def worksheets(self):
+        """Tab metadata — one API read, and it includes the non-date tabs."""
+        self.reads.append('worksheets')
+        return [self.master] + list(self.date_sheets.values())
+
+    def values_batch_get(self, ranges, params=None):
+        """Many tabs in a single read, like the real batchGet.
+
+        Mirrors two details the app has to cope with: the echoed range is
+        resolved ("'2026-08-14'!A2:L100", not the A2:L that was asked for),
+        and an empty range comes back with no 'values' key at all.
+        """
+        self.reads.append('values_batch_get')
+        value_ranges = []
+        for spec in ranges:
+            name = str(spec).split('!')[0].strip("'")
+            sheet = self.date_sheets.get(name)
+            rows = [list(row) for row in sheet.rows[1:]] if sheet else []
+            entry = {'range': f"'{name}'!A2:L1000", 'majorDimension': 'ROWS'}
+            if rows:
+                entry['values'] = rows
+            value_ranges.append(entry)
+        return {'spreadsheetId': 'fake', 'valueRanges': value_ranges}
 
 
 @pytest.fixture
@@ -136,6 +187,15 @@ def sheets(monkeypatch):
     monkeypatch.setattr(flask_app.threading, 'Thread',
                         lambda *a, **k: types.SimpleNamespace(start=lambda: None))
     return fake
+
+
+@pytest.fixture(autouse=True)
+def clean_upcoming_cache():
+    """The dashboard's upcoming view is cached per process for 60 seconds, so
+    without this one test's counts would be served to the next."""
+    flask_app._upcoming_cache.clear()
+    yield
+    flask_app._upcoming_cache.clear()
 
 
 @pytest.fixture(autouse=True)

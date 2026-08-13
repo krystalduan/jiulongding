@@ -173,8 +173,14 @@ def generate_reservation_id():
     return max(len(all_data) - 1, 0) + 1
 
 
-def clean_phone(phone):
-    """Normalise to 61XXXXXXXXX. Returns None if not a valid AU mobile number."""
+def mobile_number(phone):
+    """Normalise to 61XXXXXXXXX, or None if this is not an AU mobile.
+
+    Silent, unlike clean_phone(), because most callers are only asking a
+    question. Deciding whether the dashboard should mark a booking as textable
+    happens for every row of every day staff open, and a landline answering that
+    question with "no" is not a rejection of anything.
+    """
     if not phone:
         return None
     cleaned = re.sub(r'\D', '', str(phone))
@@ -192,9 +198,46 @@ def clean_phone(phone):
     # AU mobiles: 61 + 4XXXXXXXX  (11 digits total)
     if re.fullmatch(r'614\d{8}', normalised):
         return normalised
+    return None
 
+
+def clean_phone(phone):
+    """mobile_number(), for the places where a number that is not a mobile means
+    a booking that cannot be taken. Logs, because there it is a refusal."""
+    normalised = mobile_number(phone)
+    if normalised:
+        return normalised
     logger.warning("Rejected invalid Australian mobile number")
     return None
+
+
+def normalise_staff_phone(raw):
+    """A phone number as staff typed it, ready for the sheet.
+
+    clean_phone() takes AU mobiles only, because that is all the day-of SMS can
+    reach. Staff take bookings from landlines and overseas numbers as well, and
+    refusing those would mean staff could not correct a number that is simply
+    true — so they are kept, and reported back as not textable rather than
+    silently stored as if a reminder were coming.
+
+    Returns (stored_value, is_mobile, error). error is None when usable.
+    """
+    text = str(raw or '').strip()
+    if not text:
+        return '', False, 'Please enter a phone number.'
+    if re.search(r'[A-Za-z]', text):
+        return '', False, 'That does not look like a phone number.'
+
+    mobile = mobile_number(text)
+    if mobile:
+        return mobile, True, None
+
+    digits = re.sub(r'\D', '', text)
+    if not 8 <= len(digits) <= 15:
+        return '', False, 'That does not look like a phone number.'
+
+    logger.info("Staff saved a non-mobile number; this booking will not be texted")
+    return digits, False, None
 
 # =============================================================================
 # RESERVATION VALIDATION
@@ -508,14 +551,43 @@ def rate_limited(bucket, limit, window_seconds):
 RESTAURANT_PHONE = '+61 423 987 048'
 RESTAURANT_ADDRESS = '71 Dixon Street (up the stairs), Haymarket, Sydney NSW 2000'
 
-# Web fonts are stripped by Gmail and most clients, so these are stacks of
-# fonts already installed on the reader's machine. Both are old-style serifs
-# for a 复古 feel: Garamond/Palatino for English, and a Song/Ming face for
-# Chinese — the traditional typeface of printed Chinese text.
+# Where the email should fetch fonts and other assets from. Emails are read
+# long after they are sent and from anywhere, so this is the live site even
+# when the mail was generated on a laptop.
+ASSET_BASE_URL = os.environ.get('ASSET_BASE_URL', 'https://jiulongding.au').rstrip('/')
+
+# The same two stacks the site uses, so a booking looks the same in the inbox
+# as on the page. Both are old-style serifs for a 复古 feel: Garamond for
+# English, and a Song/Ming face for Chinese — the traditional typeface of
+# printed Chinese text.
+#
+# The named webfonts come first and are declared in EMAIL_FONT_FACES below.
+# Gmail and Outlook ignore @font-face, so everything after them is a stack of
+# faces already installed on the reader's machine: those clients simply land
+# one step down rather than on a default sans.
 EMAIL_FONT = ("'EB Garamond', Garamond, 'Hoefler Text', 'Palatino Linotype', "
               "Palatino, 'Book Antiqua', Georgia, 'Times New Roman', serif")
 EMAIL_FONT_CN = ("'Songti SC', STSong, 'Noto Serif SC', 'Source Han Serif SC', "
-                 "SimSun, 'Songti TC', STKaiti, KaiTi, serif")
+                 "SimSun, 'Songti TC', STKaiti, KaiTi, 'PingFang SC', serif")
+# The masthead face, matching the page. Its unicode-range covers exactly
+# 九龙鼎重庆火锅, so any other character falls through to the Song stack on its
+# own — the same behaviour as the stylesheet.
+EMAIL_FONT_BRAND = "'chineseFont', " + EMAIL_FONT_CN
+
+EMAIL_FONT_FACES = f"""
+  @font-face {{
+    font-family: 'EB Garamond';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url({ASSET_BASE_URL}/static/fonts/EBGaramond-VariableFont_wght.woff2) format('woff2');
+  }}
+  @font-face {{
+    font-family: 'chineseFont';
+    font-display: swap;
+    src: url({ASSET_BASE_URL}/static/fonts/chineseFont-subset.woff2) format('woff2');
+    unicode-range: U+4E5D, U+9F99, U+9F0E, U+91CD, U+5E86, U+706B, U+9505;
+  }}"""
 
 
 def format_phone_display(phone):
@@ -526,67 +598,27 @@ def format_phone_display(phone):
     return phone or ''
 
 
-def build_confirmation_email(customer_name, d):
-    """Returns (subject, html_body, text_body) for a reservation confirmation."""
-    try:
-        date_obj = datetime.strptime(d['date'], '%Y-%m-%d')
-        formatted_date = date_obj.strftime('%A, %d %B %Y')   # in the email body
-        subject_date = date_obj.strftime('%d/%m/%Y')         # in the subject line
-    except Exception:
-        formatted_date = subject_date = d['date']
+def _email_rows_html(rows):
+    """The detail table shared by both emails.
 
-    phone = format_phone_display(d.get('phone'))
-    # Chinese as chosen, with the English gloss beside it — an email has no
-    # language switch, so it has to carry both.
-    dish = dish_bilingual(d.get('dish_type')) or 'Not specified'
-    people = d.get('people', '')
+    Each row is (english label, chinese label, value) or a 4th entry with the
+    value it is replacing. A replaced value is struck through in grey above the
+    new one, so a guest can see at a glance what actually moved.
+    """
+    out = []
+    for row in rows:
+        label, zh, value = row[0], row[1], row[2]
+        was = row[3] if len(row) > 3 else None
 
-    # Self-service link. Only produced when we know which booking this is —
-    # a resend without a reservation id simply omits the button.
-    manage_link = ''
-    if d.get('reservation_id'):
-        try:
-            manage_link = manage_url(d['reservation_id'], d['date'], d.get('email'))
-        except Exception:
-            logger.exception("Could not build manage link; sending email without it")
+        if was and str(was) != str(value):
+            value_html = (
+                f'''<span style="color:#b3a79f;font-weight:400;
+                         text-decoration:line-through;">{escape(str(was))}</span><br>
+            <span style="color:#1C1008;">{escape(str(value))}</span>''')
+        else:
+            value_html = escape(str(value))
 
-    subject = f"Your reservation at JiuLongDing Hotpot | {subject_date}"
-
-    # Table-wrapped anchor rather than a padded <a>: Outlook renders mail with
-    # Word, which drops padding on inline elements, so a plain styled link
-    # collapses to bare text there.
-    manage_button_html = ''
-    if manage_link:
-        manage_button_html = f"""
-        <tr><td align="center" style="padding:4px 32px 30px;">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-            <tr><td bgcolor="#8B1A1A" style="border-radius:8px;">
-              <a href="{escape(manage_link, quote=True)}"
-                 style="display:inline-block;padding:13px 28px;font-family:{EMAIL_FONT};
-                        font-size:15px;color:#ffffff;text-decoration:none;font-weight:600;
-                        border-radius:8px;">Change or cancel your booking&nbsp;·&nbsp;<span
-                        style="font-family:{EMAIL_FONT_CN};">更改或取消预订</span></a>
-            </td></tr>
-          </table>
-          <p style="margin:12px 0 0;font-family:{EMAIL_FONT};font-size:12px;color:#a89a91;">
-            Same-day changes need at least 2 hours' notice.<br>
-            <span style="font-family:{EMAIL_FONT_CN};">当天更改需提前至少 2 小时。</span></p>
-        </td></tr>"""
-
-    # Raw values here — row_html escapes each one exactly once. The Chinese
-    # label sits under the English one in its own font stack, because the
-    # serif stack above has no Chinese glyphs and clients would substitute
-    # something that does not match the rest of the mail.
-    rows = [
-        ('Name', '姓名', str(customer_name)),
-        ('Date', '日期', formatted_date),
-        ('Time', '时间', d['time']),
-        ('Party size', '人数', f'{people} people'),
-        ('Dish type', '锅底', dish),
-        ('Contact', '电话', phone),
-    ]
-    row_html = ''.join(
-        f'''
+        out.append(f'''
         <tr>
           <td style="padding:11px 0;border-bottom:1px solid #ece3dc;
                      font-size:13px;letter-spacing:.06em;text-transform:uppercase;
@@ -594,16 +626,64 @@ def build_confirmation_email(customer_name, d):
             <span style="font-family:{EMAIL_FONT_CN};font-size:12px;
                          letter-spacing:.04em;color:#a89a91;">{escape(zh)}</span></td>
           <td style="padding:11px 0;border-bottom:1px solid #ece3dc;
-                     font-size:16px;color:#1C1008;font-weight:600;">{escape(str(value))}</td>
-        </tr>''' for label, zh, value in rows)
+                     font-size:16px;color:#1C1008;font-weight:600;">{value_html}</td>
+        </tr>''')
+    return ''.join(out)
 
-    html_body = f"""<!doctype html>
+
+def _email_button_html(href, label_en, label_zh, note_en='', note_zh=''):
+    """The one button style these emails use. Empty href renders nothing.
+
+    Table-wrapped anchor rather than a padded <a>: Outlook renders mail with
+    Word, which drops padding on inline elements, so a plain styled link
+    collapses to bare text there.
+    """
+    if not href:
+        return ''
+
+    fine_print = ''
+    if note_en or note_zh:
+        fine_print = f"""
+          <p style="margin:12px 0 0;font-family:{EMAIL_FONT};font-size:12px;color:#a89a91;">
+            {note_en}<br>
+            <span style="font-family:{EMAIL_FONT_CN};">{note_zh}</span></p>"""
+
+    return f"""
+        <tr><td align="center" style="padding:4px 32px 30px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+            <tr><td bgcolor="#8B1A1A" style="border-radius:8px;">
+              <a href="{escape(href, quote=True)}"
+                 style="display:inline-block;padding:13px 28px;font-family:{EMAIL_FONT};
+                        font-size:15px;color:#ffffff;text-decoration:none;font-weight:600;
+                        border-radius:8px;">{label_en}&nbsp;·&nbsp;<span
+                        style="font-family:{EMAIL_FONT_CN};">{label_zh}</span></a>
+            </td></tr>
+          </table>{fine_print}
+        </td></tr>"""
+
+
+def _email_manage_button_html(manage_link):
+    """The self-service button carried by the booking and change emails."""
+    return _email_button_html(
+        manage_link, 'Change or cancel your booking', '更改或取消预订',
+        "Same-day changes need at least 2 hours' notice.",
+        '当天更改需提前至少 2 小时。')
+
+
+def _email_document(subject, preheader, intro_html, row_html,
+                    manage_button_html, note_html):
+    """The card every email from us is built in: masthead, details, address.
+
+    Both builders go through here so the two mails cannot drift apart.
+    """
+    return f"""<!doctype html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{escape(subject)}</title></head>
+<title>{escape(subject)}</title>
+<style>{EMAIL_FONT_FACES}</style></head>
 <body style="margin:0;padding:0;background:#FAF7F2;">
   <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
-    {formatted_date} at {d['time']} for {people} people. We hold tables for 15 minutes.
+    {preheader}
   </div>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
          style="background:#FAF7F2;padding:28px 12px;">
@@ -613,17 +693,15 @@ def build_confirmation_email(customer_name, d):
                     border:1px solid #eee2d8;">
 
         <tr><td align="center" style="background:#8B1A1A;padding:30px 32px 26px;">
-          <div style="font-family:{EMAIL_FONT_CN};font-size:34px;color:#ffffff;
-                      letter-spacing:.22em;line-height:1.15;text-indent:.22em;">九龙鼎</div>
-          <div style="font-family:{EMAIL_FONT};font-size:19px;color:#f7e3d8;
-                      margin-top:10px;letter-spacing:.05em;">JiuLongDing</div>
-          <div style="font-family:{EMAIL_FONT};font-size:11px;color:#dda9a2;
-                      margin-top:6px;letter-spacing:.24em;text-transform:uppercase;
-                      text-indent:.24em;">Chongqing Hotpot</div>
+          <div style="font-family:{EMAIL_FONT_BRAND};font-size:34px;color:#ffffff;
+                      letter-spacing:.02em;line-height:1.25;">九龙鼎重庆火锅</div>
+          <div style="font-family:{EMAIL_FONT};font-size:12px;color:#dda9a2;
+                      margin-top:10px;letter-spacing:.16em;text-transform:uppercase;
+                      text-indent:.16em;white-space:nowrap;">JiuLongDing Chongqing Hotpot</div>
         </td></tr>
 
         <tr><td style="padding:30px 32px 4px;">
-         
+          {intro_html}
         </td></tr>
 
         <tr><td style="padding:20px 32px 0;">
@@ -650,17 +728,7 @@ def build_confirmation_email(customer_name, d):
           </table>
         </td></tr>
 
-        <tr><td style="padding:22px 32px {'14px' if manage_link else '30px'};">
-          <p style="margin:0;font-family:{EMAIL_FONT};font-size:14px;
-                    line-height:1.7;color:#5d534c;">
-            We hold tables for <strong style="color:#1C1008;">15 minutes</strong>.
-            {'Need to make a change? Use the button below.'
-             if manage_link else
-             'To change or cancel, please call us with your name and booking date.'}<br>
-            <span style="font-family:{EMAIL_FONT_CN};font-size:13px;">
-              我们为您保留座位 15 分钟。{'如需更改，请点击下方按钮。'
-              if manage_link else '如需更改或取消，请致电我们。'}</span></p>
-        </td></tr>
+        {note_html}
 
         {manage_button_html}
 
@@ -679,19 +747,64 @@ def build_confirmation_email(customer_name, d):
 </body>
 </html>"""
 
+
+def _booking_email_parts(customer_name, d):
+    """The values both emails present, formatted once."""
+    try:
+        date_obj = datetime.strptime(d['date'], '%Y-%m-%d')
+        formatted_date = date_obj.strftime('%A, %d %B %Y')   # in the email body
+        subject_date = date_obj.strftime('%d/%m/%Y')         # in the subject line
+    except Exception:
+        formatted_date = subject_date = d['date']
+
+    # Self-service link. Only produced when we know which booking this is —
+    # a resend without a reservation id simply omits the button.
+    manage_link = ''
+    if d.get('reservation_id'):
+        try:
+            manage_link = manage_url(d['reservation_id'], d['date'], d.get('email'))
+        except Exception:
+            logger.exception("Could not build manage link; sending email without it")
+
+    return {
+        'formatted_date': formatted_date,
+        'subject_date': subject_date,
+        'phone': format_phone_display(d.get('phone')),
+        # Chinese as chosen, with the English gloss beside it — an email has no
+        # language switch, so it has to carry both.
+        'dish': dish_bilingual(d.get('dish_type')) or 'Not specified',
+        'people': d.get('people', ''),
+        'manage_link': manage_link,
+    }
+
+
+def _hold_note_html(manage_link, lead_en, lead_zh):
+    return f"""
+        <tr><td style="padding:22px 32px {'14px' if manage_link else '30px'};">
+          <p style="margin:0;font-family:{EMAIL_FONT};font-size:14px;
+                    line-height:1.7;color:#5d534c;">
+            We hold tables for <strong style="color:#1C1008;">15 minutes</strong>.
+            {lead_en}<br>
+            <span style="font-family:{EMAIL_FONT_CN};font-size:13px;">
+              我们为您保留座位 15 分钟。{lead_zh}</span></p>
+        </td></tr>"""
+
+
+def _manage_text(manage_link):
+    """The self-service block for the plain-text half of either email."""
     if manage_link:
-        manage_text = (f"\nCHANGE OR CANCEL 更改或取消\n  {manage_link}\n"
-                       "  (same-day changes need at least 2 hours' notice)\n"
-                       "  (当天更改需提前至少 2 小时)\n")
-    else:
-        manage_text = ("To change or cancel, please call us with your name\n"
-                       "and booking date. 如需更改或取消，请致电我们。\n")
-
-    detail_lines = '\n'.join(f'  {label} {zh}: {value}' for label, zh, value in rows)
-    text_body = f"""JIULONGDING 九龙鼎 - CHONGQING HOTPOT
+        return (f"\nCHANGE OR CANCEL 更改或取消\n  {manage_link}\n"
+                "  (same-day changes need at least 2 hours' notice)\n"
+                "  (当天更改需提前至少 2 小时)\n")
+    return ("To change or cancel, please call us with your name\n"
+            "and booking date. 如需更改或取消，请致电我们。\n")
 
 
-YOUR BOOKING 您的预订
+def _text_body(heading, detail_lines, manage_text):
+    return f"""JIULONGDING 九龙鼎 - CHONGQING HOTPOT
+
+
+{heading}
 {detail_lines}
 
 FINDING US 地址
@@ -704,14 +817,184 @@ We hold tables for 15 minutes. 我们为您保留座位 15 分钟。
 JiuLongDing Chongqing Hotpot (九龙鼎重庆火锅)
 {RESTAURANT_ADDRESS}
 """
+
+
+def build_confirmation_email(customer_name, d):
+    """Returns (subject, html_body, text_body) for a reservation confirmation."""
+    parts = _booking_email_parts(customer_name, d)
+    manage_link = parts['manage_link']
+    subject = f"Your reservation at JiuLongDing Hotpot | {parts['subject_date']}"
+
+    rows = [
+        ('Name', '姓名', str(customer_name)),
+        ('Date', '日期', parts['formatted_date']),
+        ('Time', '时间', d['time']),
+        ('Party size', '人数', f"{parts['people']} people"),
+        ('Dish type', '锅底', parts['dish']),
+        ('Contact', '电话', parts['phone']),
+    ]
+
+    html_body = _email_document(
+        subject=subject,
+        preheader=(f"{parts['formatted_date']} at {d['time']} for "
+                   f"{parts['people']} people. We hold tables for 15 minutes."),
+        intro_html='',
+        row_html=_email_rows_html(rows),
+        manage_button_html=_email_manage_button_html(manage_link),
+        note_html=_hold_note_html(
+            manage_link,
+            'Need to make a change? Use the button below.' if manage_link
+            else 'To change or cancel, please call us with your name and booking date.',
+            '如需更改，请点击下方按钮。' if manage_link else '如需更改或取消，请致电我们。'),
+    )
+
+    detail_lines = '\n'.join(f'  {label} {zh}: {value}' for label, zh, value in rows)
+    text_body = _text_body('YOUR BOOKING 您的预订', detail_lines,
+                           _manage_text(manage_link))
     return subject, html_body, text_body
 
 
-def send_confirmation_email(customer_email, customer_name, reservation_details):
+def build_change_email(customer_name, d, previous):
+    """Confirmation that a booking moved. `previous` holds what it moved from.
+
+    Same card as the original confirmation, with the replaced date or time
+    struck through above the new one so the change is legible at a glance.
+    """
+    parts = _booking_email_parts(customer_name, d)
+    manage_link = parts['manage_link']
+    subject = f"Your reservation has been updated | {parts['subject_date']}"
+
+    def replaced(key, now_value, render=lambda v: v):
+        """What this field used to be, or None if it did not change.
+
+        Staff can change the party size and the phone number as well as the
+        date, so every field the card shows has to be able to carry its own
+        strike-through. Showing a new party size with nothing struck out beside
+        it reads as though we had it wrong all along.
+        """
+        was = previous.get(key) or ''
+        return render(was) if was and str(was) != str(now_value) else None
+
+    rows = [
+        ('Name', '姓名', str(customer_name)),
+        ('Date', '日期', parts['formatted_date'], replaced('date', d['date'], describe_date)),
+        ('Time', '时间', d['time'], replaced('time', d['time'])),
+        ('Party size', '人数', f"{parts['people']} people",
+         replaced('people', parts['people'], lambda v: f'{v} people')),
+        ('Dish type', '锅底', parts['dish']),
+        ('Contact', '电话', parts['phone'],
+         replaced('phone', d.get('phone'), format_phone_display)),
+    ]
+
+    intro_html = f"""
+          <p style="margin:0;font-family:{EMAIL_FONT};font-size:20px;
+                    color:#1C1008;font-weight:600;">Your booking has been updated</p>
+          <p style="margin:8px 0 0;font-family:{EMAIL_FONT_CN};font-size:15px;
+                    color:#8a7f77;">您的预订已更新</p>
+          <p style="margin:14px 0 0;font-family:{EMAIL_FONT};font-size:14px;
+                    line-height:1.7;color:#5d534c;">
+            Here are your new details. Anything crossed out is what it replaced.<br>
+            <span style="font-family:{EMAIL_FONT_CN};font-size:13px;">
+              以下是更新后的信息，划线部分为原预订内容。</span></p>"""
+
+    html_body = _email_document(
+        subject=subject,
+        preheader=(f"Now {parts['formatted_date']} at {d['time']} for "
+                   f"{parts['people']} people."),
+        intro_html=intro_html,
+        row_html=_email_rows_html(rows),
+        manage_button_html=_email_manage_button_html(manage_link),
+        note_html=_hold_note_html(
+            manage_link,
+            'Need to change it again? Use the button below.' if manage_link
+            else 'To change or cancel, please call us with your name and booking date.',
+            '如需再次更改，请点击下方按钮。' if manage_link else '如需更改或取消，请致电我们。'),
+    )
+
+    detail_lines = '\n'.join(
+        f"  {r[0]} {r[1]}: {r[2]}" + (f"  (was {r[3]})" if len(r) > 3 and r[3] else '')
+        for r in rows)
+    text_body = _text_body('YOUR UPDATED BOOKING 您的最新预订', detail_lines,
+                           _manage_text(manage_link))
+    return subject, html_body, text_body
+
+
+def build_cancellation_email(customer_name, d):
+    """Returns (subject, html_body, text_body) confirming a cancellation.
+
+    No strike-through here, unlike the change email: there is no replacement
+    value, and reusing that styling for "gone" rather than "replaced" would
+    read as a second meaning for the same mark. The booking is stated plainly
+    under a heading that says it is cancelled.
+    """
+    parts = _booking_email_parts(customer_name, d)
+    subject = f"Your reservation has been cancelled | {parts['subject_date']}"
+
+    rows = [
+        ('Name', '姓名', str(customer_name)),
+        ('Date', '日期', parts['formatted_date']),
+        ('Time', '时间', d['time']),
+        ('Party size', '人数', f"{parts['people']} people"),
+    ]
+
+    intro_html = f"""
+          <p style="margin:0;font-family:{EMAIL_FONT};font-size:20px;
+                    color:#1C1008;font-weight:600;">Your reservation has been cancelled</p>
+          <p style="margin:8px 0 0;font-family:{EMAIL_FONT_CN};font-size:15px;
+                    color:#8a7f77;">您的预订已取消</p>
+          <p style="margin:14px 0 0;font-family:{EMAIL_FONT};font-size:14px;
+                    line-height:1.7;color:#5d534c;">
+            Your table on <strong style="color:#1C1008;">{escape(parts['formatted_date'])}</strong>
+            at <strong style="color:#1C1008;">{escape(str(d['time']))}</strong>
+            is no longer booked. We hope to see you another time.<br>
+            <span style="font-family:{EMAIL_FONT_CN};font-size:13px;">
+              您在该时段的预订已取消，期待下次光临。</span></p>"""
+
+    note_html = f"""
+        <tr><td style="padding:22px 32px 14px;">
+          <p style="margin:0;font-family:{EMAIL_FONT};font-size:14px;
+                    line-height:1.7;color:#5d534c;">
+            Changed your mind? You are very welcome to book again.<br>
+            <span style="font-family:{EMAIL_FONT_CN};font-size:13px;">
+              改变主意了？欢迎随时重新预订。</span></p>
+        </td></tr>"""
+
+    html_body = _email_document(
+        subject=subject,
+        preheader=(f"Cancelled: {parts['formatted_date']} at {d['time']}."),
+        intro_html=intro_html,
+        row_html=_email_rows_html(rows),
+        # The manage link is useless now, so the way back is a fresh booking.
+        manage_button_html=_email_button_html(
+            f'{PUBLIC_BASE_URL}/book', 'Make a new booking', '重新预订'),
+        note_html=note_html,
+    )
+
+    detail_lines = '\n'.join(f'  {label} {zh}: {value}' for label, zh, value in rows)
+    text_body = _text_body(
+        'CANCELLED BOOKING 已取消的预订', detail_lines,
+        f"\nMAKE A NEW BOOKING 重新预订\n  {PUBLIC_BASE_URL}/book\n")
+    return subject, html_body, text_body
+
+
+def send_confirmation_email(customer_email, customer_name, reservation_details,
+                            previous=None, kind=None):
+    """Send a booking email.
+
+    kind='cancelled' sends the cancellation; otherwise `previous` selects the
+    change confirmation and its absence the original booking confirmation.
+    """
     try:
         logger.info(f"Sending email to {customer_email}")
-        subject, html_body, text_body = build_confirmation_email(
-            customer_name, reservation_details)
+        if kind == 'cancelled':
+            subject, html_body, text_body = build_cancellation_email(
+                customer_name, reservation_details)
+        elif previous:
+            subject, html_body, text_body = build_change_email(
+                customer_name, reservation_details, previous)
+        else:
+            subject, html_body, text_body = build_confirmation_email(
+                customer_name, reservation_details)
 
         response = requests.post(
             "https://api.resend.com/emails",
@@ -740,9 +1023,9 @@ def send_confirmation_email(customer_email, customer_name, reservation_details):
         return False
 
 
-def send_email_async(email, name, reservation_data):
+def send_email_async(email, name, reservation_data, previous=None, kind=None):
     try:
-        if send_confirmation_email(email, name, reservation_data):
+        if send_confirmation_email(email, name, reservation_data, previous, kind):
             logger.info(f"Background email sent to {email}")
         else:
             logger.warning(f"Background email failed for {email}")
@@ -828,6 +1111,7 @@ def send_sms_on_date(target_date, message_type="day_of"):
         sent_count = 0
         failed_count = 0
         skipped_count = 0
+        no_mobile_count = 0
         batch_updates = []
 
         # Idempotency marker written into column K. It carries the send date,
@@ -845,7 +1129,18 @@ def send_sms_on_date(target_date, message_type="day_of"):
             confirmed = row[8]
             sms_note = row[10] if len(row) > 10 else ''
 
-            if confirmed != "Pending" or not phone:
+            if confirmed != "Pending":
+                continue
+
+            # Staff can save a landline or an overseas number for a booking taken
+            # over the phone, so "has a number" is not the same as "can be
+            # texted". Handing one of those to the SMS API spends a message on a
+            # send that cannot arrive, so the check is what the number actually
+            # is, not whether the cell is filled.
+            mobile = mobile_number(phone)
+            if not mobile:
+                no_mobile_count += 1
+                logger.info(f"Row {i}: no mobile number, cannot send {message_type}")
                 continue
 
             # A previous failure is left to retry; only a success blocks a resend.
@@ -860,7 +1155,7 @@ def send_sms_on_date(target_date, message_type="day_of"):
                 f"Reply Y to confirm or N to cancel.\n"
                 f"Location: 71 Dixon St (up the stairs), Haymarket - JLD Hotpot"
             )
-            result = send_sms(phone, sms_message,
+            result = send_sms(mobile, sms_message,
                               custom_ref=f"{message_type}_{now.timestamp()}")
             stamp = now.strftime('%d/%m/%y %H:%M')
             if result:
@@ -874,8 +1169,14 @@ def send_sms_on_date(target_date, message_type="day_of"):
 
         if batch_updates:
             date_sheet.batch_update(batch_updates)
-        return (f"SMS Summary for {target_date}: {sent_count} sent, "
-                f"{failed_count} failed, {skipped_count} already sent today")
+        # The two kinds of skip are counted apart: "already texted" is the job
+        # working, while a booking with no mobile is one that will sit at Pending
+        # until somebody rings it, and reporting them as one number hid that.
+        summary = (f"SMS Summary for {target_date}: {sent_count} sent, "
+                   f"{failed_count} failed, {skipped_count} already sent today")
+        if no_mobile_count:
+            summary += f", {no_mobile_count} with no mobile number (needs a call)"
+        return summary
 
     except Exception as e:
         return f"Error sending SMS for {target_date}: {e}"
@@ -1082,6 +1383,20 @@ def reservation_success():
     reservation_data = session.get('last_reservation')
     if not reservation_data:
         return redirect('/')
+    # Same self-service link the confirmation email carries. Safe to put here
+    # because this page is only ever rendered for the session that made the
+    # booking — see the redirect above — so it is shown to the person who
+    # already knows every detail on it. The page is noindex/no-referrer for
+    # the same reason the manage page is.
+    manage_token = None
+    if reservation_data.get('reservation_id'):
+        try:
+            manage_token = make_manage_token(reservation_data['reservation_id'],
+                                             reservation_data['date'],
+                                             reservation_data.get('email'))
+        except Exception:
+            logger.exception("Could not build manage link for the success page")
+
     # The session holds the raw submitted values: an ISO date and a Chinese
     # dish type. Both need a readable form in each language.
     return render_template(
@@ -1090,6 +1405,7 @@ def reservation_success():
         date_zh=describe_date_zh(reservation_data.get('date')),
         dish_type_en=dish_in_english(reservation_data.get('dish_type')),
         dish_type_both=dish_bilingual(reservation_data.get('dish_type')),
+        manage_token=manage_token,
         **reservation_data)
 
 # =============================================================================
@@ -1116,6 +1432,7 @@ FINISHED_STATUSES = {CANCELLED_STATUS.lower(), MODIFIED_STATUS.lower(), 'no'}
 
 # Column positions in Master Data (0-based), per submit_reservation_route().
 MASTER_ID, MASTER_DATE, MASTER_TIME, MASTER_EMAIL = 0, 2, 3, 7
+MASTER_PEOPLE, MASTER_PHONE = 4, 6
 
 
 def _scan_tab(date_sheet, want_id, want_email):
@@ -1196,8 +1513,13 @@ def find_booking(payload):
     return None, None, None
 
 
-def update_master_booking(want_id, want_email, new_date, new_time):
-    """Keep Master Data's date and time in step with a change.
+def update_master_booking(want_id, want_email, new_date, new_time,
+                          new_people=None, new_phone=None):
+    """Keep Master Data in step with a change.
+
+    Date and time always; party size and phone only when given, which is how a
+    staff edit keeps the master list from drifting out of agreement with the
+    date tabs it indexes.
 
     Best-effort: a booking that has been changed but whose index is stale is
     still a booking the customer can reach through the new link, so a failure
@@ -1212,10 +1534,15 @@ def update_master_booking(want_id, want_email, new_date, new_time):
                 continue
             if want_email and str(row[MASTER_EMAIL]).strip().lower() != want_email:
                 continue
-            master.batch_update([
+            updates = [
                 {'range': f'C{i}', 'values': [[new_date]]},
                 {'range': f'D{i}', 'values': [[new_time]]},
-            ])
+            ]
+            if new_people is not None:
+                updates.append({'range': f'E{i}', 'values': [[new_people]]})
+            if new_phone is not None:
+                updates.append({'range': f'G{i}', 'values': [[new_phone]]})
+            master.batch_update(updates)
             return True
     except Exception:
         logger.exception("Manage link: Master Data update failed")
@@ -1383,6 +1710,21 @@ def manage_booking_cancel(token):
                                       f"抱歉，出了一点问题，请致电我们 {RESTAURANT_PHONE}。"))
 
     logger.info(f"Booking {booking['reservation_id']} cancelled by customer")
+
+    # In writing, so the guest has a record that it actually went through.
+    # Background, for the same reason as the other two: the page they are about
+    # to see must not wait on Resend, or fail with it.
+    guest_email = str(payload.get('e') or '')
+    if guest_email:
+        threading.Thread(target=send_email_async, args=(
+            guest_email, booking['name'],
+            {'date': booking['date_raw'], 'time': booking['time'],
+             'people': booking['people'], 'dish_type': booking['dish_type'],
+             'phone': booking['phone'], 'email': guest_email,
+             'reservation_id': booking['reservation_id']},
+            None, 'cancelled',
+        )).start()
+
     # Marking column I stops the 8:30 reminder: that job only texts "Pending".
     booking['status'] = CANCELLED_STATUS
     return render_manage('cancelled', token=token, booking=booking)
@@ -1481,6 +1823,19 @@ def manage_booking_reschedule(token):
     update_master_booking(str(booking['reservation_id']),
                           str(payload.get('e') or ''), new_date, new_time)
 
+    # A written record of the change, so the guest is not relying on a page
+    # they may have already closed. Sent in the background: the confirmation
+    # they are about to see must not wait on Resend, and must not fail with it.
+    guest_email = str(payload.get('e') or '')
+    if guest_email:
+        threading.Thread(target=send_email_async, args=(
+            guest_email, booking['name'],
+            {'date': new_date, 'time': new_time, 'people': booking['people'],
+             'dish_type': booking['dish_type'], 'phone': booking['phone'],
+             'email': guest_email, 'reservation_id': booking['reservation_id']},
+            {'date': old_date, 'time': old_time},
+        )).start()
+
     if moving_day:
         # Redirect so the address bar ends up holding a token that points at
         # the new tab, and so the page shown is a fresh read of the moved row.
@@ -1502,7 +1857,10 @@ def require_staff_auth(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not session.get('staff_authenticated'):
-            return redirect('/staff/login')
+            # /staff, not /staff/login: the latter only accepts POST, so a staff
+            # member opening a bookmarked dashboard was redirected to a 405
+            # instead of to the login form.
+            return redirect('/staff')
         return f(*args, **kwargs)
     return decorated_function
 
@@ -1533,7 +1891,184 @@ def staff_login_post():
 @app.route("/staff/dashboard")
 @require_staff_auth
 def staff_dashboard():
-    return render_template('dashboard.html', default_date=datetime.now().strftime('%Y-%m-%d'))
+    # Sydney, not the server's clock. Fly runs in UTC, so from 10am Sydney
+    # onwards datetime.now() is still yesterday — the dashboard used to open on
+    # the wrong day for the whole of service.
+    return render_template('dashboard.html',
+                           default_date=datetime.now(sydney_tz).strftime('%Y-%m-%d'))
+
+# =============================================================================
+# STAFF — THE DAYS AHEAD
+# =============================================================================
+#
+# What the dashboard opens on: one line per date that still has tables to lay,
+# so staff see the book rather than an empty date picker.
+#
+# Bookings live one worksheet tab per date, so the obvious implementation reads
+# every upcoming tab in a loop — twenty-odd round trips against a ceiling of 60
+# reads per minute. values_batch_get() asks for all of them in a single request
+# instead, which holds this whole view to two reads: one for the list of tabs,
+# one for their contents.
+#
+# The counts come from those same tabs, under the same status rules as the day
+# view below, so a number on a line and the list behind it cannot disagree.
+
+UPCOMING_CACHE_SECONDS = 60
+# A booking can be made 32 days out and moved 30 days from the day of the
+# change, so the number of future tabs is bounded by how the app works. This cap
+# only stops a spreadsheet full of hand-made tabs from building a request URL
+# long enough to be rejected.
+UPCOMING_MAX_DATES = 40
+
+DATE_TAB_RE = re.compile(r'\d{4}-\d{2}-\d{2}')
+
+# Party size is stored as the bucket the customer picked ('3-4', '10+'), not a
+# number, so a day's covers can only ever be a range. Summing these as integers
+# is what the old total_people did, and it scored 0 for every real booking.
+PARTY_SIZE_RE = re.compile(r'(\d+)(?:\s*-\s*(\d+))?\s*(\+?)')
+
+
+def _covers_range(people):
+    """'3-4' -> (3, 4, False). '10+' -> (10, 10, True). Unreadable -> zeroes."""
+    match = PARTY_SIZE_RE.fullmatch(str(people or '').strip())
+    if not match:
+        return 0, 0, False
+    low = int(match.group(1))
+    high = int(match.group(2) or low)
+    return low, max(low, high), bool(match.group(3))
+
+
+def _summarise_date_tab(rows):
+    """Counts for one date's rows, or None if nothing is still expected there.
+
+    Cancelled and moved rows are skipped rather than counted: a day whose only
+    rows are cancellations is not upcoming work, and returning None is what
+    keeps it off the list entirely.
+    """
+    total = confirmed = 0
+    covers_low = covers_high = 0
+    covers_open = False
+
+    for row in rows:
+        if len(row) <= COL_CONFIRMED:
+            continue
+        status = str(row[COL_CONFIRMED]).strip().lower()
+        if status in FINISHED_STATUSES:
+            continue
+        total += 1
+        if status in ('confirmed', 'yes'):
+            confirmed += 1
+        low, high, is_open = _covers_range(
+            row[COL_PEOPLE] if len(row) > COL_PEOPLE else '')
+        covers_low += low
+        covers_high += high
+        covers_open = covers_open or is_open
+
+    if not total:
+        return None
+    return {
+        'bookings': total,
+        'confirmed': confirmed,
+        'pending': total - confirmed,
+        'covers_low': covers_low,
+        'covers_high': covers_high,
+        'covers_open': covers_open,
+    }
+
+
+def _date_labels(date_str, today):
+    """Everything the line needs to name its date, worked out in Sydney time."""
+    day = datetime.strptime(date_str, '%Y-%m-%d').date()
+    delta = (day - today).days
+    return {
+        'date': date_str,
+        'weekday': day.strftime('%a'),
+        'day_month': day.strftime('%d/%m'),
+        'relative': 'Today' if delta == 0 else 'Tomorrow' if delta == 1 else '',
+    }
+
+
+def _read_upcoming(today):
+    """Every date from today on that still has bookings. Two API reads."""
+    spreadsheet, _ = get_sheets()
+
+    dates = []
+    for worksheet in spreadsheet.worksheets():
+        title = worksheet.title
+        if not DATE_TAB_RE.fullmatch(title):
+            continue            # Master Data, Unknown Replies, anything by hand
+        try:
+            day = datetime.strptime(title, '%Y-%m-%d').date()
+        except ValueError:
+            continue            # tab named like a date but isn't one
+        if day >= today:
+            dates.append(title)
+
+    if not dates:
+        return []
+    dates = sorted(dates)[:UPCOMING_MAX_DATES]
+
+    # A2:L skips the header row. One request, every tab.
+    response = spreadsheet.values_batch_get([f"'{name}'!A2:L" for name in dates])
+
+    # Paired by the tab name the API echoes back rather than by position: if a
+    # range ever came back missing, zipping on order would shift every date
+    # after it onto another day's bookings.
+    returned = {}
+    for entry in response.get('valueRanges') or []:
+        name = str(entry.get('range') or '').split('!')[0].strip("'")
+        returned[name] = entry.get('values') or []
+
+    days = []
+    for name in dates:
+        summary = _summarise_date_tab(returned.get(name, []))
+        if summary:
+            days.append(dict(summary, **_date_labels(name, today)))
+    return days
+
+
+_upcoming_lock = threading.Lock()
+_upcoming_cache = {}
+
+
+def upcoming_days(force=False):
+    """The days ahead, briefly cached.
+
+    Cheap enough to call on every dashboard load: inside the TTL it costs no
+    API calls at all. The cache is per worker process and holds nothing but
+    counts — the day view is always read live, so it stays the truth, and a
+    change made there forces its way back through here.
+    """
+    today = datetime.now(sydney_tz).date()
+    now = datetime.now().timestamp()
+
+    with _upcoming_lock:
+        # Keyed on the date as well as the clock, so it turns over at midnight
+        # however recently it was filled.
+        if (not force
+                and _upcoming_cache.get('date') == today
+                and now - _upcoming_cache.get('at', 0) < UPCOMING_CACHE_SECONDS):
+            return _upcoming_cache['days']
+
+    days = _read_upcoming(today)
+
+    with _upcoming_lock:
+        _upcoming_cache.update({'days': days, 'date': today, 'at': now})
+    return days
+
+
+@app.route("/staff/api/upcoming")
+@require_staff_auth
+def get_upcoming():
+    try:
+        days = upcoming_days(force=request.args.get('refresh') == '1')
+    except Exception:
+        logger.exception("Staff dashboard: could not build the upcoming view")
+        return jsonify({'success': False, 'days': [],
+                        'message': 'Could not load upcoming bookings'}), 503
+
+    return jsonify({'success': True, 'days': days,
+                    'today': datetime.now(sydney_tz).strftime('%Y-%m-%d')})
 
 
 @app.route("/staff/api/reservations/<date>")
@@ -1567,7 +2102,12 @@ def get_reservations(date):
                     'dish_type': row[6] if len(row) > 6 else '',
                     'notes': row[7] if len(row) > 7 else '',
                     'confirmed': row[8] if len(row) > 8 else 'Pending',
-                    'reservation_id': row[9] if len(row) > 9 else ''
+                    'reservation_id': row[9] if len(row) > 9 else '',
+                    # Whether the day-of reminder can reach this booking at all.
+                    # Derived rather than stored: it is only ever a fact about
+                    # the number in the cell, so there is nothing to keep in
+                    # step and nothing that can go stale.
+                    'textable': bool(mobile_number(row[3] if len(row) > 3 else '')),
                 })
 
         def parse_time(time_str):
@@ -1586,17 +2126,73 @@ def get_reservations(date):
             parse_time(x['time']),
         ))
 
+        # Covers, from the live bookings only. This used to sum the party size
+        # with int() behind an isdigit() guard, and party size is a bucket
+        # ('3-4', '10+') — so the guard was never true and the figure it
+        # reported was always 0.
+        live = [r for r in reservations
+                if r['confirmed'].strip().lower() not in FINISHED_STATUSES]
+        covers = [_covers_range(r['people']) for r in live]
+
         return jsonify({
             'success': True,
             'message': f'Found {len(reservations)} reservations for {date}',
             'reservations': reservations,
             'total_confirmed': len([r for r in reservations if r['confirmed'].lower() in ['confirmed', 'yes']]),
             'total_pending': len([r for r in reservations if r['confirmed'].lower() in ['pending', 'no', '']]),
-            'total_people': sum([int(r['people']) for r in reservations if r['people'].isdigit()])
+            'covers_low': sum(low for low, _, _ in covers),
+            'covers_high': sum(high for _, high, _ in covers),
+            'covers_open': any(is_open for _, _, is_open in covers),
         })
 
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error loading reservations: {str(e)}', 'reservations': []})
+
+
+# =============================================================================
+# STAFF — WRITING TO A BOOKING
+# =============================================================================
+#
+# Every write below addresses a booking by row number, which is a position in a
+# sheet that people also edit by hand. A row number on its own is therefore a
+# guess: insert a row above, and it points at somebody else's table. So each
+# write carries the reservation id the dashboard was showing at that position,
+# and locate_booking_row() refuses to write anywhere that id is not still
+# sitting.
+
+def locate_booking_row(date_sheet, row_number, reservation_id):
+    """Confirm a row still holds the booking the dashboard was showing.
+
+    Returns (row_number, row, error). The row number can come back different
+    from the one asked for: if the booking has shifted position, following the
+    id to where it is now is better than refusing a change staff are watching a
+    customer wait for. It only fails when the id is nowhere in the tab.
+    """
+    rows = date_sheet.get_all_values()
+
+    if not reservation_id:
+        # Older rows predate reservation ids, and there is nothing else to
+        # identify them by. Trust the row number, which is all the dashboard
+        # has ever had.
+        if row_number > len(rows):
+            return None, None, 'That booking is no longer on this date. Reloading.'
+        return row_number, rows[row_number - 1], None
+
+    wanted = str(reservation_id).strip()
+
+    def id_at(index):
+        row = rows[index - 1] if 0 < index <= len(rows) else []
+        return str(row[COL_RES_ID]).strip() if len(row) > COL_RES_ID else ''
+
+    if id_at(row_number) == wanted:
+        return row_number, rows[row_number - 1], None
+
+    logger.warning(f"Staff edit: booking {wanted} is not at row {row_number}; searching")
+    for i in range(2, len(rows) + 1):
+        if id_at(i) == wanted:
+            return i, rows[i - 1], None
+
+    return None, None, 'That booking is no longer on this date. Reloading.'
 
 
 @app.route("/staff/api/update_status", methods=['POST'])
@@ -1617,10 +2213,237 @@ def update_reservation_status():
             return jsonify({'success': False, 'message': 'Invalid status'}), 400
 
         date_sheet = spreadsheet.worksheet(sheet_name)
+        row_number, _, error = locate_booking_row(
+            date_sheet, row_number, data.get('reservation_id'))
+        if error:
+            return jsonify({'success': False, 'message': error, 'stale': True}), 409
+
         date_sheet.update_cell(row_number, 9, status)
         return jsonify({'success': True, 'message': f"Reservation updated to {status}"})
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error updating reservation: {str(e)}'})
+
+
+# The four things staff are asked to change over the phone. Name, email and dish
+# type are deliberately not here: an email address is what the manage link and
+# the master index are keyed on, so changing it is a different job with its own
+# consequences, not a field on this form.
+STAFF_EDITABLE = ('time', 'date', 'people', 'phone')
+
+
+def _staff_edit_changes(data, row, current_date):
+    """Read the requested new values off the request.
+
+    Returns (changes, warnings, error); error is None when the values are usable.
+
+    Only fields that are actually different from the sheet come back, so a form
+    submitted with one box touched writes one cell, and a form submitted with
+    nothing touched is caught as a no-op rather than costing a write and an
+    email to the customer.
+
+    Staff rules are looser than the customer's on purpose: the whole reason
+    somebody phones the restaurant is to do what the website would not allow, so
+    the two-hour notice and the no-moving-into-today rules are not applied here.
+    What stays is what keeps the sheet readable by everything downstream.
+    """
+    def cell(index):
+        return str(row[index]).strip() if len(row) > index else ''
+
+    changes = {}
+    warnings = []
+
+    if 'time' in data:
+        new_time = str(data.get('time') or '').strip()
+        if new_time not in VALID_TIMES:
+            return None, None, 'That is not one of our service times.'
+        if new_time != cell(COL_TIME):
+            changes['time'] = new_time
+
+    if 'people' in data:
+        new_people = str(data.get('people') or '').strip()
+        if new_people not in VALID_PARTY_SIZES:
+            return None, None, 'Please choose a party size.'
+        if new_people != cell(COL_PEOPLE):
+            changes['people'] = new_people
+
+    if 'phone' in data:
+        new_phone, is_mobile, error = normalise_staff_phone(data.get('phone'))
+        if error:
+            return None, None, error
+        if new_phone != cell(COL_PHONE):
+            changes['phone'] = new_phone
+        if not is_mobile:
+            warnings.append('Saved, but this number cannot receive the reminder '
+                            'text — this booking will need confirming by phone.')
+
+    if 'date' in data:
+        new_date = str(data.get('date') or '').strip()
+        try:
+            target = datetime.strptime(new_date, '%Y-%m-%d').date()
+        except (ValueError, TypeError):
+            return None, None, 'Please choose a valid date.'
+        today = datetime.now(sydney_tz).date()
+        if target < today:
+            return None, None, 'That date has already passed.'
+        if target > today + timedelta(days=MAX_ADVANCE_DAYS):
+            return None, None, ('Bookings can only be moved up to '
+                                f'{MAX_ADVANCE_DAYS} days ahead.')
+        # Against the tab the row lives in, not its Date cell. The tab is what
+        # decides which day a booking is on, and the two can disagree: an older
+        # row with that cell left blank would otherwise read as a move to the
+        # date it is already on, which appends a second copy to the same tab and
+        # marks the original Modified.
+        if new_date != current_date:
+            changes['date'] = new_date
+
+    return changes, warnings, None
+
+
+@app.route("/staff/api/update_booking", methods=['POST'])
+@require_staff_auth
+def update_booking():
+    """Change a booking's time, date, party size or phone number.
+
+    A change of date is a move between worksheet tabs, not a cell write, so it
+    goes through the same move_booking_row() a customer's own reschedule uses:
+    the old row stays visible on its original date marked Modified, and the live
+    row is the new one.
+    """
+    if rate_limited('staff_edit', limit=60, window_seconds=300):
+        logger.warning(f"Staff edit rate limit hit from {client_ip()}")
+        return jsonify({'success': False,
+                        'message': 'Too many changes at once. Please wait a moment.'}), 429
+
+    data = request.get_json(silent=True) or {}
+    sheet_name = str(data.get('date_tab') or '').replace('/', '-')
+    row_number = data.get('row_number')
+
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', sheet_name):
+        return jsonify({'success': False, 'message': 'Invalid date'}), 400
+    if not isinstance(row_number, int) or row_number < 2:
+        return jsonify({'success': False, 'message': 'Invalid row'}), 400
+
+    try:
+        spreadsheet, _ = get_sheets()
+        try:
+            date_sheet = spreadsheet.worksheet(sheet_name)
+        except gspread.WorksheetNotFound:
+            return jsonify({'success': False, 'stale': True,
+                            'message': 'That date has no bookings. Reloading.'}), 409
+
+        row_number, row, error = locate_booking_row(
+            date_sheet, row_number, data.get('reservation_id'))
+        if error:
+            return jsonify({'success': False, 'message': error, 'stale': True}), 409
+
+        def cell(index):
+            return str(row[index]).strip() if len(row) > index else ''
+
+        status = cell(COL_CONFIRMED)
+        if status.strip().lower() in FINISHED_STATUSES:
+            return jsonify({
+                'success': False, 'stale': True,
+                'message': f'This booking is {status.lower()}. '
+                           'Confirm it first if the table is going ahead.'}), 409
+
+        # Optimistic concurrency: the dashboard sends back what it was showing,
+        # and a mismatch means somebody else — another phone, the customer's own
+        # manage link — changed this booking since. Saving over that silently
+        # would lose their change with no trace.
+        expect = data.get('expect') or {}
+        for field, index in (('time', COL_TIME), ('people', COL_PEOPLE),
+                             ('phone', COL_PHONE)):
+            if field in expect and str(expect[field]).strip() != cell(index):
+                return jsonify({
+                    'success': False, 'stale': True,
+                    'message': 'Someone else changed this booking. Reloading.'}), 409
+
+        changes, warnings, error = _staff_edit_changes(data, row, sheet_name)
+        if error:
+            return jsonify({'success': False, 'message': error}), 400
+        if not changes:
+            return jsonify({'success': False, 'message': 'Nothing was changed.'}), 400
+
+        old = {'date': sheet_name, 'time': cell(COL_TIME),
+               'people': cell(COL_PEOPLE), 'phone': cell(COL_PHONE)}
+        new = dict(old, **changes)
+        moving_day = 'date' in changes
+
+        # A confirmed table that has been moved is no longer a confirmed table:
+        # the customer agreed to a time that no longer exists. Dropping it back
+        # to Pending is also what puts it back in the day-of reminder, so they
+        # get asked to confirm the new one.
+        reconfirm = (status.strip().lower() in ('confirmed', 'yes')
+                     and ('time' in changes or 'date' in changes))
+
+        stamp = datetime.now(sydney_tz).strftime('%d/%m/%y %H:%M')
+        described = ', '.join(f'{field} {old[field]}->{new[field]}'
+                              for field in STAFF_EDITABLE if field in changes)
+        note = f'Edited by staff {described} {stamp}'
+
+        if moving_day:
+            # move_booking_row() sets the time, date and note on the copy it
+            # writes; everything else has to be right on the row handed to it.
+            moved = list(row) + [''] * max(0, len(DATE_TAB_HEADERS) - len(row))
+            moved[COL_PEOPLE] = new['people']
+            moved[COL_PHONE] = new['phone']
+            if reconfirm:
+                moved[COL_CONFIRMED] = 'Pending'
+            move_booking_row(spreadsheet, date_sheet, row_number, moved,
+                             new['date'], new['time'], note)
+        else:
+            updates = [{'range': f'L{row_number}', 'values': [[note]]}]
+            for field, column in (('time', 'B'), ('people', 'C'), ('phone', 'D')):
+                if field in changes:
+                    updates.append({'range': f'{column}{row_number}',
+                                    'values': [[new[field]]]})
+            if reconfirm:
+                updates.append({'range': f'I{row_number}', 'values': [['Pending']]})
+            date_sheet.batch_update(updates)
+
+        logger.info(f"Booking {cell(COL_RES_ID) or '?'}: {note}")
+
+        # Master Data is the only index from reservation id to date, so it is
+        # what lets a manage link already sitting in the customer's inbox find
+        # the booking after staff have moved it.
+        update_master_booking(cell(COL_RES_ID), '', new['date'], new['time'],
+                              new_people=new['people'], new_phone=new['phone'])
+
+        if reconfirm:
+            warnings.append('Moved back to Pending, so the reminder text asks '
+                            'the customer to confirm the new time.')
+
+        # Notifying is the staff member's call, not ours: most of these edits are
+        # made while the customer is on the phone being told the new time, and an
+        # email that arrives mid-conversation is noise. Sent in the background so
+        # the dashboard never waits on Resend, or fails with it.
+        guest_email = cell(COL_EMAIL)
+        notified = bool(data.get('notify')) and bool(guest_email)
+        if notified:
+            threading.Thread(target=send_email_async, args=(
+                guest_email, cell(COL_NAME),
+                {'date': new['date'], 'time': new['time'], 'people': new['people'],
+                 'dish_type': cell(COL_DISH), 'phone': new['phone'],
+                 'email': guest_email, 'reservation_id': cell(COL_RES_ID)},
+                old,
+            )).start()
+        elif data.get('notify'):
+            warnings.append('No email address on this booking, so nothing was sent.')
+
+        return jsonify({
+            'success': True,
+            'moved': moving_day,
+            'new_date': new['date'],
+            'notified': notified,
+            'warnings': warnings,
+            'message': (f"Moved to {describe_date(new['date'])} at {new['time']}"
+                        if moving_day else 'Booking updated'),
+        })
+
+    except Exception:
+        logger.exception("Staff edit: write failed")
+        return jsonify({'success': False,
+                        'message': 'Could not save that change. Please try again.'}), 503
 
 # =============================================================================
 # ADMIN ROUTES
@@ -1629,7 +2452,9 @@ def update_reservation_status():
 @app.route("/admin")
 @require_staff_auth
 def admin_panel():
-    today = datetime.now().strftime('%Y-%m-%d')
+    # Sydney, like everything else that names a service day. On UTC this read as
+    # yesterday from mid-morning, next to two buttons that send today's texts.
+    today = datetime.now(sydney_tz).strftime('%Y-%m-%d')
     return f"""<html>
     <head>
         <title>JLD Admin Panel</title>
@@ -1698,12 +2523,60 @@ def receive_sms():
 
 
 def get_reservation_date_from_sms(received_at):
-    if received_at:
-        try:
-            return datetime.fromisoformat(received_at.replace('Z', '+00:00')).strftime('%Y-%m-%d')
-        except Exception as e:
-            logger.warning(f"Error parsing received_at: {e}")
-    return None
+    """Which date tab a reply belongs to, read in Sydney time.
+
+    This used to format the provider's timestamp as it arrived, which is UTC.
+    Sydney is ten or eleven hours ahead, so for any reply before mid-morning the
+    UTC date is still yesterday — and the reminder goes out at 8:30, so that was
+    every reply to it. The booking being confirmed sits on today's tab; the
+    lookup was asking for the day before, which either found nothing and filed
+    the reply for manual review, or found a repeat customer's booking from
+    yesterday and confirmed that one instead.
+    """
+    if not received_at:
+        return None
+    try:
+        moment = datetime.fromisoformat(str(received_at).replace('Z', '+00:00'))
+    except Exception as e:
+        logger.warning(f"Error parsing received_at: {e}")
+        return None
+
+    if moment.tzinfo is None:
+        # No offset given, so it is already local time as the provider sees it.
+        moment = sydney_tz.localize(moment)
+    return moment.astimezone(sydney_tz).strftime('%Y-%m-%d')
+
+
+def _find_sms_row(date_sheet, phone_number):
+    """The row a text reply is about: (row_number, row), or (None, None).
+
+    Matched on the number rather than on the text in the cell. The sheet holds
+    whatever was typed at booking time ('0412345678'), while the provider reports
+    the sender in international form ('61412345678') — the same phone, two
+    spellings, and a literal search finds neither from the other.
+
+    Cancelled rows and rows that have moved to another date are skipped, and a
+    still-Pending row wins over one that has already been answered, so a repeat
+    customer's "Y" lands on the table they are actually being asked about.
+    """
+    wanted = mobile_number(phone_number)
+    if not wanted:
+        return None, None
+
+    answered = (None, None)
+    for i, row in enumerate(date_sheet.get_all_values()[1:], start=2):
+        if len(row) <= COL_CONFIRMED:
+            continue
+        if mobile_number(row[COL_PHONE]) != wanted:
+            continue
+        status = str(row[COL_CONFIRMED]).strip().lower()
+        if status in FINISHED_STATUSES:
+            continue
+        if status in ('pending', ''):
+            return i, row
+        if answered == (None, None):
+            answered = (i, row)
+    return answered
 
 
 def process_sms_reply_smart(phone_number, message, received_at):
@@ -1717,12 +2590,11 @@ def process_sms_reply_smart(phone_number, message, received_at):
 
         try:
             date_sheet = spreadsheet.worksheet(parsed_date)
-            cell = date_sheet.find(phone_number, in_column=4)
+            row_number, row = _find_sms_row(date_sheet, phone_number)
 
-            if cell:
-                logger.info(f"Found reservation in {parsed_date}, row {cell.row}")
-                row_data = date_sheet.row_values(cell.row)
-                name = row_data[0] if row_data else "Unknown"
+            if row_number:
+                logger.info(f"Found reservation in {parsed_date}, row {row_number}")
+                name = row[COL_NAME] if row else "Unknown"
 
                 reply_timestamp = datetime.fromisoformat(
                     received_at.replace('Z', '+00:00')).strftime('%Y-%m-%d %H:%M')
@@ -1741,9 +2613,9 @@ def process_sms_reply_smart(phone_number, message, received_at):
                     logger.warning(f"SMS reply needs manual review: {message}")
 
                 date_sheet.batch_update([
-                    {'range': f'I{cell.row}', 'values': [[status]]},
-                    {'range': f'K{cell.row}', 'values': [[full_reply]]},
-                    {'range': f'L{cell.row}', 'values': [[method]]}
+                    {'range': f'I{row_number}', 'values': [[status]]},
+                    {'range': f'K{row_number}', 'values': [[full_reply]]},
+                    {'range': f'L{row_number}', 'values': [[method]]}
                 ])
                 logger.info(f"Updated reservation for {name}")
                 return True
@@ -1768,7 +2640,12 @@ def log_unknown_reply(phone_number, message, received_at):
             unknown_sheet = spreadsheet.worksheet("Unknown Replies")
         except gspread.WorksheetNotFound:
             unknown_sheet = spreadsheet.add_worksheet("Unknown Replies", rows=100, cols=5)
-            unknown_sheet.update('A1:E1', [['Timestamp', 'Phone Number', 'Message', 'Received At', 'Status']])
+            # gspread 6 takes the values first and the range second. With the old
+            # order this raised, so the very run that had to create the tab was
+            # the one that failed to label it and lost the reply it was filing.
+            unknown_sheet.update(
+                [['Timestamp', 'Phone Number', 'Message', 'Received At', 'Status']],
+                'A1:E1')
         unknown_sheet.append_row([
             datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             phone_number, message, received_at, "Needs manual review"

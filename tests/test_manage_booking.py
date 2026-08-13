@@ -6,6 +6,8 @@ Run with:  python3 -m pytest tests/test_manage_booking.py -v
 The token in the URL is the entire credential, so the security tests here
 matter as much as the behavioural ones.
 """
+import re
+import types
 from datetime import datetime, timedelta
 
 import pytest
@@ -299,6 +301,208 @@ class TestBothLanguages:
         tomorrow = days_from_now(1)
         assert f'data-en="{app_module.describe_date(tomorrow)}"' in html
         assert f'data-zh="{app_module.describe_date_zh(tomorrow)}"' in html
+
+
+class TestTheChangeEmail:
+    """A guest who moves a booking gets it in writing, not just on screen."""
+
+    def _email(self, app_module, new=None, old=None):
+        booking = {'date': days_from_now(6), 'time': '20:00', 'people': '3-4',
+                   'dish_type': '大火锅', 'phone': '61412345678',
+                   'email': 'jane@gmail.com', 'reservation_id': 7}
+        booking.update(new or {})
+        previous = {'date': days_from_now(3), 'time': '19:00'}
+        previous.update(old or {})
+        return app_module.build_change_email('Jane Smith', booking, previous)
+
+    def test_it_says_what_it_is(self, app_module):
+        subject, html, _ = self._email(app_module)
+        assert 'updated' in subject.lower()
+        assert 'has been updated' in html
+
+    def test_the_old_values_are_struck_through(self, app_module):
+        _, html, _ = self._email(app_module)
+        struck = [line for line in html.splitlines() if 'line-through' in line]
+        assert struck, "the replaced values need to be visibly replaced"
+
+    def test_only_what_changed_is_struck_through(self, app_module):
+        """A time-only change must not strike out the date as well."""
+        same = days_from_now(3)
+        _, html, _ = self._email(app_module, new={'date': same}, old={'date': same})
+        before, _, after = html.partition('line-through')
+        assert 'line-through' in html, "the time did change"
+        assert app_module.describe_date(same) not in before.split('<tr>')[-1]
+
+    def test_unchanged_details_carry_over(self, app_module):
+        _, html, _ = self._email(app_module)
+        assert 'Jane Smith' in html
+        assert '大火锅' in html and 'Shared Hotpot' in html
+
+    def test_the_plain_text_half_shows_the_change(self, app_module):
+        _, _, text = self._email(app_module)
+        assert '19:00' in text and '20:00' in text
+        assert 'was' in text.lower()
+
+    def test_it_carries_a_working_manage_link(self, client, sheets, app_module):
+        new_date = days_from_now(6)
+        make_booking(sheets, app_module, date=new_date, time='20:00')
+        _, html, _ = self._email(app_module, new={'date': new_date})
+
+        token = re.search(r'/manage/([A-Za-z0-9_\-\.]+)"', html).group(1)
+        assert client.get(f'/manage/{token}').status_code == 200
+
+    def test_it_looks_like_the_confirmation(self, app_module):
+        """Both are built from the same card, so the chrome must match."""
+        _, changed, _ = self._email(app_module)
+        _, confirmation, _ = app_module.build_confirmation_email('Jane Smith', {
+            'date': days_from_now(6), 'time': '20:00', 'people': '3-4',
+            'dish_type': '大火锅', 'phone': '61412345678',
+            'email': 'jane@gmail.com', 'reservation_id': 7})
+
+        for shared in ('九龙鼎', 'Chongqing Hotpot', 'Finding us',
+                       '71 Dixon Street', 'We hold tables for'):
+            assert shared in changed and shared in confirmation
+
+    def test_a_change_actually_sends_one(self, client, sheets, app_module, monkeypatch):
+        sent = []
+        monkeypatch.setattr(app_module, 'send_email_async',
+                            lambda *a, **k: sent.append(a))
+        # conftest stubs out Thread; call the target inline instead.
+        monkeypatch.setattr(app_module.threading, 'Thread',
+                            lambda target, args=(), **k: types.SimpleNamespace(
+                                start=lambda: target(*args)))
+
+        token, _ = make_booking(sheets, app_module, date=days_from_now(3), time='19:00')
+        client.post(f'/manage/{token}/reschedule',
+                    data={'date': days_from_now(6), 'time': '20:00'},
+                    follow_redirects=True)
+
+        assert len(sent) == 1, "exactly one email per change"
+        email, name, new, previous = sent[0]
+        assert email == 'jane@gmail.com'
+        assert new['time'] == '20:00' and previous['time'] == '19:00'
+
+    def test_no_email_when_the_change_is_refused(self, client, sheets, app_module,
+                                                 monkeypatch):
+        sent = []
+        monkeypatch.setattr(app_module, 'send_email_async',
+                            lambda *a, **k: sent.append(a))
+        monkeypatch.setattr(app_module.threading, 'Thread',
+                            lambda target, args=(), **k: types.SimpleNamespace(
+                                start=lambda: target(*args)))
+
+        token, _ = make_booking(sheets, app_module, date=days_from_now(3))
+        client.post(f'/manage/{token}/reschedule',
+                    data={'date': days_from_now(0), 'time': '20:00'})
+        assert sent == [], "a rejected change must not be confirmed by email"
+
+
+class TestTheCancellationEmail:
+
+    def _email(self, app_module, **over):
+        booking = {'date': days_from_now(3), 'time': '19:00', 'people': '3-4',
+                   'dish_type': '大火锅', 'phone': '61412345678',
+                   'email': 'jane@gmail.com', 'reservation_id': 7}
+        booking.update(over)
+        return app_module.build_cancellation_email('Jane Smith', booking)
+
+    def test_it_says_what_happened(self, app_module):
+        subject, html, text = self._email(app_module)
+        assert 'cancelled' in subject.lower()
+        assert 'has been cancelled' in html
+        assert 'cancelled' in text.lower()
+
+    def test_it_names_the_booking_that_went(self, app_module):
+        date = days_from_now(3)
+        _, html, _ = self._email(app_module, date=date, time='19:00')
+        assert app_module.describe_date(date) in html
+        assert '19:00' in html
+
+    def test_it_offers_a_way_back(self, app_module):
+        _, html, text = self._email(app_module)
+        assert '/book' in html and '/book' in text
+
+    def test_it_does_not_offer_a_dead_manage_link(self, app_module):
+        """The booking is gone, so a manage link would lead nowhere useful."""
+        _, html, _ = self._email(app_module)
+        assert '/manage/' not in html
+
+    def test_nothing_is_struck_through(self, app_module):
+        """Strike-through means 'replaced by' in the change email."""
+        _, html, _ = self._email(app_module)
+        assert 'line-through' not in html
+
+    def test_it_looks_like_the_others(self, app_module):
+        _, html, _ = self._email(app_module)
+        for shared in ('九龙鼎', 'Chongqing Hotpot', 'Finding us', '71 Dixon Street'):
+            assert shared in html
+
+    def test_cancelling_sends_it(self, client, sheets, app_module, monkeypatch):
+        sent = []
+        monkeypatch.setattr(app_module, 'send_email_async',
+                            lambda *a, **k: sent.append(a))
+        monkeypatch.setattr(app_module.threading, 'Thread',
+                            lambda target, args=(), **k: types.SimpleNamespace(
+                                start=lambda: target(*args)))
+
+        token, _ = make_booking(sheets, app_module)
+        client.post(f'/manage/{token}/cancel')
+
+        assert len(sent) == 1
+        email, name, data, previous, kind = sent[0]
+        assert email == 'jane@gmail.com'
+        assert kind == 'cancelled'
+        assert previous is None
+
+    def test_cancelling_twice_only_emails_once(self, client, sheets, app_module,
+                                               monkeypatch):
+        sent = []
+        monkeypatch.setattr(app_module, 'send_email_async',
+                            lambda *a, **k: sent.append(a))
+        monkeypatch.setattr(app_module.threading, 'Thread',
+                            lambda target, args=(), **k: types.SimpleNamespace(
+                                start=lambda: target(*args)))
+
+        token, _ = make_booking(sheets, app_module)
+        client.post(f'/manage/{token}/cancel')
+        client.post(f'/manage/{token}/cancel')
+        assert len(sent) == 1, "the second cancel is a no-op and must stay silent"
+
+
+class TestTheLinkOnTheSuccessPage:
+    """The confirmation page offers the same self-service link as the email."""
+
+    def _book(self, client, sheets, **over):
+        from conftest import submit
+        submit(client, **over)
+        return client.get('/reservation_success')
+
+    def test_the_button_is_there(self, client, sheets, app_module):
+        html = self._book(client, sheets).get_data(as_text=True)
+        assert 'Modify booking' in html
+        assert '/manage/' in html
+
+    def test_the_link_opens_that_booking(self, client, sheets, app_module):
+        date = days_from_now(3)
+        html = self._book(client, sheets, date=date).get_data(as_text=True)
+        token = re.search(r'/manage/([A-Za-z0-9_\-\.]+)"', html).group(1)
+
+        payload, error = app_module.read_manage_token(token)
+        assert error is None
+        assert payload['e'] == 'jane.smith@gmail.com'
+        assert payload['d'] == date
+
+    def test_the_page_is_not_indexable(self, client, sheets):
+        """It carries a credential and a customer's contact details."""
+        html = self._book(client, sheets).get_data(as_text=True)
+        assert 'noindex' in html
+        assert 'no-referrer' in html
+
+    def test_no_link_without_a_session(self, client, sheets):
+        """Someone opening the URL cold gets nothing, not a stranger's link."""
+        response = client.get('/reservation_success')
+        assert response.status_code == 302
+        assert '/manage/' not in response.get_data(as_text=True)
 
 
 class TestWhichDatesAreOffered:

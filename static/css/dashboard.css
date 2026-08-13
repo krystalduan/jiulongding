@@ -43,6 +43,164 @@ body {
     padding: 0 16px;
 }
 
+/* ── View heading ── */
+.view-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.view-title {
+    font-size: 19px;
+    font-weight: 700;
+    color: #111827;
+    letter-spacing: -0.3px;
+}
+
+.view-title--day {
+    margin-bottom: 16px;
+}
+
+.ghost-btn,
+.back-btn {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #6b7280;
+    cursor: pointer;
+    min-height: 38px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.ghost-btn:hover,
+.back-btn:hover {
+    background: #f9fafb;
+    color: #111827;
+}
+
+.back-btn {
+    font-weight: 600;
+    color: #b91c1c;
+    border-color: #fecaca;
+}
+
+.back-btn:hover {
+    background: #fef2f2;
+    color: #991b1b;
+}
+
+/* ── The days ahead ── */
+.upcoming-list {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+
+/* A button, not a div: this is the main way into a day, so it has to be
+   reachable by keyboard and give a proper tap target. */
+.day-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    background: white;
+    border: none;
+    border-bottom: 1px solid #f3f4f6;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    min-height: 60px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.1s;
+}
+
+.day-row:last-child { border-bottom: none; }
+.day-row:hover { background: #fafafa; }
+.day-row:active { background: #f3f4f6; }
+
+.day-row:focus-visible {
+    outline: 2px solid #b91c1c;
+    outline-offset: -2px;
+}
+
+.day-when {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 132px;
+}
+
+.day-weekday {
+    font-size: 15px;
+    font-weight: 700;
+    color: #111827;
+}
+
+.day-number {
+    font-size: 14px;
+    color: #6b7280;
+    font-variant-numeric: tabular-nums;
+}
+
+.day-relative {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #b91c1c;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 5px;
+    padding: 2px 6px;
+}
+
+.day-counts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 14px;
+    flex: 1;
+    min-width: 0;
+}
+
+.day-bookings {
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+}
+
+.day-pending {
+    font-size: 12px;
+    font-weight: 600;
+    color: #d97706;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 5px;
+    padding: 2px 8px;
+}
+
+.day-covers {
+    font-size: 13px;
+    color: #9ca3af;
+}
+
+.day-chevron {
+    font-size: 20px;
+    color: #d1d5db;
+    line-height: 1;
+}
+
 /* ── Date picker card ── */
 .date-card {
     background: white;
@@ -100,7 +258,7 @@ body {
 /* ── Stats bar ── */
 .stats-bar {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 12px;
     margin-bottom: 16px;
 }
@@ -260,6 +418,28 @@ body {
     border: 1px solid #fecaca;
 }
 
+/* Pending, but the number on file cannot receive the reminder text, so nobody
+   is going to reply Y to anything. Amber like Pending — it is the same state —
+   but it names the reason it will not clear itself. */
+.status-call {
+    background: #fff7ed;
+    color: #c2410c;
+    border: 1px solid #fed7aa;
+}
+
+.no-sms {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #c2410c;
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    border-radius: 5px;
+    padding: 1px 6px;
+    cursor: help;
+}
+
 /* Cancelled and moved bookings sort to the bottom of the list. Fading them
    keeps the run of the night readable without hiding the record. */
 .reservation-card--finished {
@@ -307,6 +487,111 @@ body {
 .btn-cancel:hover { background: #fef2f2; }
 .btn-cancel:active { background: #fee2e2; }
 
+.btn-edit {
+    background: white;
+    color: #374151;
+    border-color: #e5e7eb;
+}
+
+.btn-edit:hover { background: #f9fafb; }
+.btn-edit:active { background: #f3f4f6; }
+
+.btn-save {
+    background: #b91c1c;
+    color: white;
+    border-color: #b91c1c;
+    font-weight: 600;
+}
+
+.btn-save:hover { background: #991b1b; }
+.btn-save:active { background: #7f1d1d; }
+
+.btn-save:disabled {
+    background: #d1d5db;
+    border-color: #d1d5db;
+    cursor: default;
+}
+
+/* ── Edit panel ── */
+/* Opens inside the card, not as a modal: this is used on a phone mid-service,
+   where a dialog means scroll-locking a page somebody is still reading. */
+.edit-panel {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px dashed #e5e7eb;
+}
+
+.edit-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.edit-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+}
+
+.edit-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: #6b7280;
+}
+
+.edit-input {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 15px;
+    font-family: inherit;
+    color: #111827;
+    background: white;
+    min-height: 42px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.edit-input:focus {
+    outline: none;
+    border-color: #b91c1c;
+    box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.08);
+}
+
+.edit-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.edit-notify {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #374151;
+    cursor: pointer;
+}
+
+.edit-notify input {
+    width: 18px;
+    height: 18px;
+    accent-color: #b91c1c;
+}
+
+.edit-notify input:disabled + span {
+    color: #9ca3af;
+}
+
+.edit-buttons {
+    display: flex;
+    gap: 8px;
+}
+
 /* Phone call link */
 .phone-link {
     color: #374151;
@@ -315,6 +600,37 @@ body {
 }
 
 .phone-link:hover { color: #b91c1c; border-bottom-color: #b91c1c; }
+
+/* ── Toasts ── */
+/* A stack, not one fixed position per message: a save can report both that the
+   booking moved and that the move dropped it back to Pending, and stacked
+   absolutely they landed on top of each other. */
+.toast-stack {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    max-width: min(380px, calc(100vw - 32px));
+    pointer-events: none;
+}
+
+.toast {
+    padding: 12px 18px;
+    border-radius: 8px;
+    color: white;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.45;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.toast--success { background: #16a34a; }
+.toast--warn { background: #c2410c; }
+.toast--error { background: #dc2626; }
 
 /* ── Loading / empty states ── */
 .loading {
@@ -373,6 +689,35 @@ body {
         padding: 0 16px;
     }
 
+    .view-title {
+        font-size: 17px;
+    }
+
+    /* Date on one line, its numbers underneath — a phone in a service window
+       has no room for four columns. */
+    .day-row {
+        padding: 14px 16px;
+        gap: 12px;
+        align-items: flex-start;
+    }
+
+    .day-when {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 3px;
+        min-width: 84px;
+    }
+
+    .day-counts {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+
+    .day-chevron {
+        align-self: center;
+    }
+
     .date-card {
         flex-wrap: wrap;
         padding: 14px 16px;
@@ -392,7 +737,10 @@ body {
         width: 100%;
     }
 
+    /* Two by two rather than four across: "17–24" does not fit a quarter of a
+       phone without wrapping mid-number. */
     .stats-bar {
+        grid-template-columns: repeat(2, 1fr);
         gap: 8px;
     }
 
@@ -433,5 +781,35 @@ body {
         min-height: 44px;
         font-size: 14px;
         text-align: center;
+    }
+
+    /* One field per row, and 16px inputs so iOS does not zoom the page every
+       time a field is focused. */
+    .edit-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    .edit-input {
+        font-size: 16px;
+        min-height: 44px;
+    }
+
+    .edit-actions {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    .edit-buttons .action-btn {
+        min-height: 46px;
+    }
+
+    .toast-stack {
+        left: 16px;
+        right: 16px;
+        bottom: 16px;
+        align-items: stretch;
+        max-width: none;
     }
 }

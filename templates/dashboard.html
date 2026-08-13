@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
 </head>
 
-<body>
+<body data-today="{{ default_date }}">
     <div class="topbar">
         <div>
             <div class="topbar-brand">JiuLongDing</div>
@@ -17,32 +17,54 @@
     </div>
 
     <div class="main">
-        <div class="date-card">
-            <label for="dateInput">Date</label>
-            <input type="date" id="dateInput" class="date-input" value="{{ default_date }}">
-            <button onclick="loadReservations()" class="load-btn">Load</button>
-        </div>
+        <!-- Landing view: every date from today on that still has tables to lay. -->
+        <section id="overviewView">
+            <div class="view-head">
+                <h1 class="view-title">Upcoming bookings</h1>
+                <button type="button" class="ghost-btn" onclick="loadUpcoming(true)">Refresh</button>
+            </div>
 
-        <div id="statsBar" class="stats-bar" style="display: none;">
-            <div class="stat-item">
-                <div id="totalReservations" class="stat-number">0</div>
-                <div class="stat-label">Total</div>
+            <div id="upcomingList" class="upcoming-list">
+                <div class="loading"><div class="spinner"></div>Loading the days ahead...</div>
             </div>
-            <div class="stat-item">
-                <div id="confirmedCount" class="stat-number">0</div>
-                <div class="stat-label">Confirmed</div>
-            </div>
-            <div class="stat-item">
-                <div id="pendingCount" class="stat-number">0</div>
-                <div class="stat-label">Pending</div>
-            </div>
-        </div>
 
-        <div id="reservationsContainer" class="reservations-container">
-            <div class="loading">
-                Select a date and click Load to view reservations
+            <div class="date-card">
+                <label for="dateInput">Or open another date</label>
+                <input type="date" id="dateInput" class="date-input" value="{{ default_date }}">
+                <button type="button" onclick="jumpToDate()" class="load-btn">Load</button>
             </div>
-        </div>
+        </section>
+
+        <!-- One date's bookings. Reached by clicking a day, or the picker above. -->
+        <section id="dayView" hidden>
+            <div class="view-head">
+                <button type="button" class="back-btn" onclick="showUpcoming()">&larr; Upcoming</button>
+                <button type="button" class="ghost-btn" onclick="loadDay(currentDate)">Refresh</button>
+            </div>
+
+            <h1 id="dayTitle" class="view-title view-title--day"></h1>
+
+            <div id="statsBar" class="stats-bar" style="display: none;">
+                <div class="stat-item">
+                    <div id="totalReservations" class="stat-number">0</div>
+                    <div class="stat-label">Total</div>
+                </div>
+                <div class="stat-item">
+                    <div id="confirmedCount" class="stat-number">0</div>
+                    <div class="stat-label">Confirmed</div>
+                </div>
+                <div class="stat-item">
+                    <div id="pendingCount" class="stat-number">0</div>
+                    <div class="stat-label">Pending</div>
+                </div>
+                <div class="stat-item">
+                    <div id="coversCount" class="stat-number">0</div>
+                    <div class="stat-label">Covers</div>
+                </div>
+            </div>
+
+            <div id="reservationsContainer" class="reservations-container"></div>
+        </section>
     </div>
 
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
