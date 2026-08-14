@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from conftest import FakeWorksheet, days_from_now
+from conftest import FakeWorksheet, days_from_now, lunch_day_from_now
 
 
 # ---------------------------------------------------------------------------
@@ -236,7 +236,9 @@ class TestRescheduling:
         assert client.get(f'/manage/{token}/reschedule').status_code == 405
 
     def test_a_future_booking_offers_every_slot(self, app_module):
-        assert app_module.available_times_for(days_from_now(5)) == app_module.ORDERED_TIMES
+        # A day that serves lunch: Tuesday and Wednesday are dinner-only,
+        # so 'every slot' is not the whole list there.
+        assert app_module.available_times_for(lunch_day_from_now(5)) == app_module.ORDERED_TIMES
 
     def test_a_past_booking_offers_nothing(self, app_module):
         assert app_module.available_times_for(days_from_now(-1)) == []
@@ -701,7 +703,7 @@ class TestChangingTheDate:
     def test_moving_a_booking_out_of_today_is_allowed(self, client, sheets, app_module):
         token, today = make_booking(sheets, app_module, date=days_from_now(0),
                                     time='20:30')
-        new = days_from_now(5)
+        new = lunch_day_from_now(5)
         client.post(f'/manage/{token}/reschedule',
                     data={'date': new, 'time': '12:00'}, follow_redirects=True)
         assert row_of(sheets, new)[DATE_COL] == new

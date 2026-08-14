@@ -241,6 +241,27 @@ def days_from_now(n):
     return (sydney_now() + timedelta(days=n)).strftime('%Y-%m-%d')
 
 
+def lunch_day_from_now(n):
+    """days_from_now(n), moved forward to a day that actually serves lunch.
+
+    Tuesday and Wednesday are dinner-only, so a test that just wants "an
+    ordinary future date" has to say so — otherwise it passes or fails
+    depending on which weekday the suite happens to run on.
+    """
+    day = (sydney_now() + timedelta(days=n)).date()
+    while day.weekday() in flask_app.DINNER_ONLY_WEEKDAYS:
+        day += timedelta(days=1)
+    return str(day)
+
+
+def dinner_only_day_from_now(n=1):
+    """The first Tuesday or Wednesday on or after n days from now."""
+    day = (sydney_now() + timedelta(days=n)).date()
+    while day.weekday() not in flask_app.DINNER_ONLY_WEEKDAYS:
+        day += timedelta(days=1)
+    return str(day)
+
+
 def get_form_token(client, path='/'):
     """Load the booking page and pull the CSRF/one-time token out of the HTML."""
     import re

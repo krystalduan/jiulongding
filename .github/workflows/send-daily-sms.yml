@@ -4,13 +4,18 @@ name: Send day-of reservation SMS
 # worker (duplicate texts) and never ran at all when the Fly machine was
 # stopped. Calling the endpoint also wakes the machine.
 #
-# GitHub cron is UTC only and has no daylight-saving awareness, so both
-# Sydney offsets are scheduled:
-#   21:30 UTC = 08:30 AEDT (UTC+11, roughly Oct-Apr)
-#   22:30 UTC = 08:30 AEST (UTC+10, roughly Apr-Oct)
-# Only one is 08:30 locally; the other is 07:30 or 09:30. The endpoint is
-# idempotent — the second call of the day sends nothing — so the effect is
-# one round of texts each morning, year round.
+# The texts are meant to go out at 08:30 Sydney. GitHub cron is UTC only and
+# has no daylight-saving awareness, so both Sydney offsets are scheduled:
+#   21:30 UTC = 08:30 AEDT (UTC+11, roughly Oct-Apr) / 07:30 AEST
+#   22:30 UTC = 08:30 AEST (UTC+10, roughly Apr-Oct) / 09:30 AEDT
+#
+# Only one of the two is 08:30 locally, and the endpoint is what decides which:
+# it refuses to send before 08:30 Sydney, so the early call is a no-op. Relying
+# on idempotency alone was not enough — that made whichever call came first the
+# one that sent, which meant 07:30 texts for half the year.
+#
+# The later call still reaches the endpoint inside its window, so a failed
+# 08:30 attempt is retried an hour on rather than missed for the day.
 
 on:
   schedule:
@@ -33,12 +38,20 @@ jobs:
 
           echo "Sydney time now: $(TZ=Australia/Sydney date '+%Y-%m-%d %H:%M %Z')"
 
+          # Pressing "Run workflow" by hand is a deliberate "send now", so it
+          # bypasses the 08:30 window. The scheduled runs never do.
+          FORCE=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            FORCE="&force=1"
+            echo "Manual run: bypassing the send window."
+          fi
+
           # Fly cold-starts the machine on first request, which can exceed a
           # default timeout; retry a few times before giving up.
           for attempt in 1 2 3; do
             echo "Attempt $attempt..."
             code=$(curl -sS --max-time 120 -o response.json -w '%{http_code}' \
-              "https://jiulongding.au/api/send-sms-cron?secret=${CRON_SECRET}") && rc=0 || rc=$?
+              "https://jiulongding.au/api/send-sms-cron?secret=${CRON_SECRET}${FORCE}") && rc=0 || rc=$?
 
             if [ "${rc:-0}" -eq 0 ] && [ "$code" = "200" ]; then
               echo "OK:"

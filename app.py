@@ -254,6 +254,36 @@ VALID_DISH_TYPES = {"大火锅", "小火锅", "炒菜"}
 # Zero-padded HH:MM sorts correctly as text, so this is service order.
 ORDERED_TIMES = sorted(VALID_TIMES)
 
+# The kitchen opens at 5pm on Tuesday and Wednesday, so there is no lunch
+# sitting on those days. date.weekday(): Monday=0 ... Sunday=6.
+DINNER_ONLY_WEEKDAYS = {1, 2}
+LUNCH_TIMES = {"12:00", "12:30", "13:00", "13:30"}
+DINNER_ONLY_MESSAGE = ("We serve dinner only on Tuesdays and Wednesdays. "
+                       "Please choose a time from 5:00 PM.")
+DINNER_ONLY_MESSAGE_ZH = "周二、周三仅供应晚市，请选择下午 5:00 之后的时间。"
+
+
+def times_on_date(booking_date):
+    """Service times that exist on a given date, before any notice rules.
+
+    Lunch is dropped on the two dinner-only days. Everything downstream — the
+    booking form, the customer's reschedule picker and the server-side checks
+    behind both — asks this one question, so the days the kitchen is shut are
+    described in a single place.
+    """
+    if booking_date.weekday() in DINNER_ONLY_WEEKDAYS:
+        return [t for t in ORDERED_TIMES if t not in LUNCH_TIMES]
+    return list(ORDERED_TIMES)
+
+
+def is_dinner_only(date_str):
+    """True when date_str falls on a day with no lunch sitting."""
+    try:
+        return (datetime.strptime(date_str, '%Y-%m-%d').date().weekday()
+                in DINNER_ONLY_WEEKDAYS)
+    except (ValueError, TypeError):
+        return False
+
 MAX_ADVANCE_DAYS = 32      # client picker allows ~1 month; keep server slightly lenient
 # How far ahead a customer may move an existing booking, counted from the day
 # they are making the change — not from the date the booking currently holds,
@@ -347,14 +377,18 @@ def available_times_for(target_date_str):
         return []
 
     now = datetime.now(sydney_tz)
-    if target_date > now.date():
-        return list(ORDERED_TIMES)
     if target_date < now.date():
         return []
 
+    # Days the kitchen is shut for lunch come out first, so the notice rule
+    # below is only ever applied to slots that exist in the first place.
+    allowed = times_on_date(target_date)
+    if target_date > now.date():
+        return allowed
+
     minutes_now = now.hour * 60 + now.minute
     out = []
-    for slot in ORDERED_TIMES:
+    for slot in allowed:
         hour, minute = (int(p) for p in slot.split(':'))
         if (hour * 60 + minute) - minutes_now >= MIN_RESCHEDULE_MINUTES:
             out.append(slot)
@@ -484,6 +518,9 @@ def validate_reservation(form):
         booking_date = datetime.strptime(date, '%Y-%m-%d').date()
     except ValueError:
         return None, "Please select a valid date."
+
+    if time not in times_on_date(booking_date):
+        return None, DINNER_ONLY_MESSAGE
 
     now = datetime.now(sydney_tz)
     today = now.date()
@@ -1185,16 +1222,57 @@ def send_sms_on_date(target_date, message_type="day_of"):
 # CRON ENDPOINT
 # =============================================================================
 
+# The day-of texts go out at 8:30 AM Sydney.
+#
+# GitHub Actions cron is UTC only and has no daylight-saving awareness, so the
+# workflow fires at both 21:30 and 22:30 UTC. Exactly one of those is 08:30 in
+# Sydney and which one it is changes with DST. Nothing previously chose between
+# them: whichever came first simply sent, so for the half of the year Sydney is
+# on AEST the texts went out at 07:30.
+#
+# The window runs forward from the target rather than either side of it, so the
+# early call is always refused while the later one still lands. Its length
+# leaves room for a retry after a failed first attempt — safe because
+# send_sms_on_date() will not text the same booking twice in one day.
+SMS_SEND_HOUR = 8
+SMS_SEND_MINUTE = 30
+SMS_SEND_WINDOW_MINUTES = 90
+
+
+def sms_window_state(now=None):
+    """(is_open, minutes_from_target) for the day-of send, in Sydney time."""
+    now = now or datetime.now(sydney_tz)
+    delta = (now.hour * 60 + now.minute) - (SMS_SEND_HOUR * 60 + SMS_SEND_MINUTE)
+    return 0 <= delta < SMS_SEND_WINDOW_MINUTES, delta
+
+
 @app.route('/api/send-sms-cron')
 def send_sms_cron():
     secret = request.args.get('secret', '')
     cron_secret = os.environ.get('CRON_SECRET', '')
     if not cron_secret or not secure_equals(secret, cron_secret):
         return jsonify({'status': 'unauthorized'}), 401
-    today = datetime.now(sydney_tz).strftime('%Y-%m-%d')
-    result = send_sms_on_date(today, message_type="day_of")
+
+    now = datetime.now(sydney_tz)
+    is_open, delta = sms_window_state(now)
+
+    # force=1 is the manual "send now": the workflow_dispatch button, or staff
+    # running it by hand. Those are deliberate, so they are not held to the
+    # schedule — only the unattended cron is.
+    if not is_open and request.args.get('force') != '1':
+        logger.info(
+            f"Cron SMS job skipped: {now.strftime('%H:%M')} Sydney is {delta:+d} min "
+            f"from the {SMS_SEND_HOUR:02d}:{SMS_SEND_MINUTE:02d} send")
+        return jsonify({
+            'status': 'skipped',
+            'reason': f"outside the send window ({now.strftime('%H:%M')} Sydney time)",
+            'sydney_time': now.strftime('%Y-%m-%d %H:%M'),
+        })
+
+    result = send_sms_on_date(now.strftime('%Y-%m-%d'), message_type="day_of")
     logger.info(f"Cron SMS job: {result}")
-    return jsonify({'status': 'ok', 'result': result})
+    return jsonify({'status': 'ok', 'result': result,
+                    'sydney_time': now.strftime('%Y-%m-%d %H:%M')})
 
 # =============================================================================
 # SEO ROUTES
@@ -1420,6 +1498,7 @@ def reservation_success():
 # Column positions in a date tab (0-based), per DATE_TAB_HEADERS.
 COL_NAME, COL_TIME, COL_PEOPLE, COL_PHONE, COL_EMAIL = 0, 1, 2, 3, 4
 COL_DATE, COL_DISH, COL_NOTES, COL_CONFIRMED, COL_RES_ID = 5, 6, 7, 8, 9
+COL_SMS = 10                          # column K
 COL_METHOD = 11                       # column L
 CANCELLED_STATUS = 'Cancelled'
 # Left behind in the old date's tab when a customer moves to another day, so
@@ -1493,22 +1572,30 @@ def find_booking(payload):
     want_email = str(payload.get('e') or '').strip().lower()
 
     tried = str(payload['d']).replace('/', '-')
-    candidates = [tried]
 
-    moved_to = master_date_for(want_id, want_email)
-    if moved_to and moved_to != tried:
-        logger.info(f"Manage link: booking {want_id} has moved {tried} -> {moved_to}")
-        candidates.append(moved_to)
-
-    for sheet_name in candidates:
+    def look_in(sheet_name):
         try:
             date_sheet = spreadsheet.worksheet(sheet_name)
         except gspread.WorksheetNotFound:
             logger.warning(f"Manage link: no date sheet for {sheet_name}")
-            continue
+            return None, None, None
         row_number, row = _scan_tab(date_sheet, want_id, want_email)
-        if row is not None:
-            return date_sheet, row_number, row
+        if row is None:
+            return None, None, None
+        return date_sheet, row_number, row
+
+    # The date in the token is right for every booking that has not moved, which
+    # is nearly all of them. Master Data is the whole booking history and grows
+    # forever, so reading it up front made the common case pay for the rare one
+    # on a page the customer is waiting on.
+    found = look_in(tried)
+    if found[1] is not None:
+        return found
+
+    moved_to = master_date_for(want_id, want_email)
+    if moved_to and moved_to != tried:
+        logger.info(f"Manage link: booking {want_id} has moved {tried} -> {moved_to}")
+        return look_in(moved_to)
 
     return None, None, None
 
@@ -1564,6 +1651,11 @@ def move_booking_row(spreadsheet, old_sheet, row_number, row, new_date, new_time
     moved[COL_TIME] = new_time
     moved[COL_DATE] = new_date
     moved[COL_METHOD] = note
+    # Column K is the reminder history for the date this booking used to be on:
+    # which text went out that morning, and what the customer replied to it.
+    # None of that is true of the new date, and carrying it across left staff
+    # reading a booking weeks out as though it had already been texted.
+    moved[COL_SMS] = ''
 
     target = get_or_create_date_sheet(spreadsheet, new_date)
     target.append_row(moved[:len(DATE_TAB_HEADERS)])
@@ -1783,6 +1875,10 @@ def manage_booking_reschedule(token):
 
     times = available_times_for(new_date)
     if new_time not in times:
+        # Checked before the notice rules so a lunch slot on a Tuesday is
+        # explained as a day we are shut, not as insufficient notice.
+        if is_dinner_only(new_date) and new_time in LUNCH_TIMES:
+            return reject(DINNER_ONLY_MESSAGE, DINNER_ONLY_MESSAGE_ZH, on_date=new_date)
         if not times:
             return reject("It's too late to move to that day online. "
                           f'Please call us on {RESTAURANT_PHONE}.',
@@ -1799,18 +1895,33 @@ def manage_booking_reschedule(token):
             if moving_day else
             f'Time changed by customer {old_time} to {new_time} {stamp}')
 
+    # A confirmed table that has moved is no longer a confirmed table: the
+    # customer agreed to a time that no longer exists. Dropping back to Pending
+    # is also what puts the booking back into the day-of reminder, so they get
+    # asked to confirm the new one. The staff edit path has always done this;
+    # a change the customer makes themselves is no different, and without it a
+    # moved booking kept a tick it had never been given for that date and was
+    # skipped by the reminder, which only ever texts Pending rows.
+    reconfirm = booking['status'].strip().lower() in ('confirmed', 'yes')
+
     try:
         if moving_day:
             # The row lives in the tab named after its date, so a new date means
             # a different tab.
             spreadsheet, _ = get_sheets()
-            move_booking_row(spreadsheet, date_sheet, row_number, row,
+            moved = list(row) + [''] * max(0, len(DATE_TAB_HEADERS) - len(row))
+            if reconfirm:
+                moved[COL_CONFIRMED] = 'Pending'
+            move_booking_row(spreadsheet, date_sheet, row_number, moved,
                              new_date, new_time, note)
         else:
-            date_sheet.batch_update([
+            updates = [
                 {'range': f'B{row_number}', 'values': [[new_time]]},
                 {'range': f'L{row_number}', 'values': [[note]]},
-            ])
+            ]
+            if reconfirm:
+                updates.append({'range': f'I{row_number}', 'values': [['Pending']]})
+            date_sheet.batch_update(updates)
     except Exception:
         logger.exception("Manage link: reschedule write failed")
         return reject('Sorry, something went wrong. '
@@ -1845,6 +1956,8 @@ def manage_booking_reschedule(token):
                                 moved=1))
 
     booking['time'] = new_time
+    if reconfirm:
+        booking['status'] = 'Pending'
     return render_active(token, booking,
                          notice=('success', f'Your booking has been moved to {new_time}.',
                                  f'您的预订时间已改为 {new_time}。'))

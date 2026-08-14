@@ -622,6 +622,15 @@ body {
     grid-template-columns: repeat(1, minmax(0, 1fr));
 }
 
+/* Why a time is unavailable, under the time picker. Quiet enough to ignore
+   when it is only restating the rules, legible when a day is closed. */
+.field-hint {
+    margin: 0.4rem 0 0;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: #6b5545;
+}
+
 /* Sits on the cream .reservation background, so it needs a panel of its own to
    read as an alert rather than as body copy. */
 .error-message {

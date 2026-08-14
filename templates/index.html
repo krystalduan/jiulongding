@@ -203,6 +203,7 @@
                             </option>
                             {% endfor %}
                         </select>
+                        <p class="field-hint" id="time-hint" hidden></p>
                     </div>
                 </div>
                 <div class="form-row">
@@ -324,11 +325,71 @@
 
             const datePicker = document.getElementById('date');
 
+            // Tuesday and Wednesday the kitchen opens at 5pm, so there is no
+            // lunch sitting. JS getDay(): Sunday=0, so Tuesday=2, Wednesday=3.
+            const DINNER_ONLY_WEEKDAYS = [2, 3];
+            const LUNCH_TIMES = ['12:00', '12:30', '13:00', '13:30'];
+
+            function isDinnerOnly(value) {
+                const [y, m, d] = value.split('-').map(Number);
+                if (!y || !m || !d) return false;
+                // Built from parts rather than new Date(value): an ISO string
+                // parses as UTC, which lands on the previous weekday for any
+                // reader behind Greenwich.
+                return DINNER_ONLY_WEEKDAYS.includes(new Date(y, m - 1, d).getDay());
+            }
+
+            // Both rules in one pass: a day we are shut for lunch, and the two
+            // hours' notice a same-day booking needs. They can apply together —
+            // a Tuesday that is also today leaves only the later dinner slots.
             function syncTimeOptions() {
-                if (datePicker.value === today) {
-                    filterTimesForToday();
-                } else {
-                    resetTimeOptions();
+                const chosen = datePicker.value;
+                const timeSelect = document.getElementById('time');
+                const timeHint = document.getElementById('time-hint');
+
+                if (!chosen) {
+                    Array.from(timeSelect.options).forEach(o => o.disabled = false);
+                    if (timeHint) timeHint.hidden = true;
+                    return;
+                }
+
+                const dinnerOnly = isDinnerOnly(chosen);
+                const isToday = chosen === today;
+                const now = new Date();
+                const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+                let anyAvailable = false;
+                Array.from(timeSelect.options).forEach(option => {
+                    if (!option.value) return;
+                    let available = true;
+                    if (dinnerOnly && LUNCH_TIMES.includes(option.value)) {
+                        available = false;
+                    }
+                    if (available && isToday) {
+                        const [h, m] = option.value.split(':').map(Number);
+                        available = (h * 60 + m) - currentMinutes >= 120;
+                    }
+                    option.disabled = !available;
+                    if (available) anyAvailable = true;
+                });
+
+                if (timeSelect.value && timeSelect.options[timeSelect.selectedIndex].disabled) {
+                    timeSelect.value = '';
+                }
+
+                // A greyed-out dropdown with no reason next to it is a phone
+                // call, so say which rule is doing it.
+                if (timeHint) {
+                    let message = '';
+                    if (!anyAvailable) {
+                        message = 'No times left online for that day — please call us on +61 423 987 048.';
+                    } else if (dinnerOnly) {
+                        message = 'Dinner only on Tuesdays and Wednesdays — we open at 5:00 PM.';
+                    } else if (isToday) {
+                        message = "Same-day bookings need at least 2 hours' notice.";
+                    }
+                    timeHint.textContent = message;
+                    timeHint.hidden = !message;
                 }
             }
 
@@ -342,27 +403,6 @@
                 if (datePicker.value) {
                     syncTimeOptions();
                 }
-            }
-
-            function filterTimesForToday() {
-                const now = new Date();
-                const currentMinutes = now.getHours() * 60 + now.getMinutes();
-                const timeSelect = document.getElementById('time');
-                let anyAvailable = false;
-                Array.from(timeSelect.options).forEach(option => {
-                    if (!option.value) return;
-                    const [h, m] = option.value.split(':').map(Number);
-                    const available = (h * 60 + m) - currentMinutes >= 120;
-                    option.disabled = !available;
-                    if (available) anyAvailable = true;
-                });
-                if (timeSelect.value && timeSelect.options[timeSelect.selectedIndex].disabled) {
-                    timeSelect.value = '';
-                }
-            }
-
-            function resetTimeOptions() {
-                Array.from(document.getElementById('time').options).forEach(o => o.disabled = false);
             }
 
             // Add form interaction animations
