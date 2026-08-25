@@ -6,7 +6,7 @@ Run with:  python3 -m pytest tests/ -v
 A booking is ACCEPTED when the response is a 302 redirect to the success page
 and a row lands in the spreadsheet. It is REJECTED when nothing is written.
 """
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -113,7 +113,7 @@ class TestBookedAtColumn:
     def test_real_names_are_accepted(self, client, sheets, name):
         assert_accepted(submit(client, name=name), sheets)
 
-    @pytest.mark.parametrize('people', ['1-2', '3-4', '4-6', '7-10', '10+'])
+    @pytest.mark.parametrize('people', ['1-2', '3-4', '5-6', '7-10', '10+'])
     def test_every_party_size_option_works(self, client, sheets, people):
         assert_accepted(submit(client, people=people), sheets)
 
@@ -252,14 +252,36 @@ class TestDateValidation:
         assert_rejected(submit(client, date=days_from_now(60)), sheets, 'one month')
 
     def test_just_inside_one_month_is_accepted(self, client, sheets):
-        assert_accepted(submit(client, date=days_from_now(30)), sheets)
+        # 28 days, not 30: the cap is a calendar month, so in February a date 30
+        # days out is genuinely past it and this would fail for a month a year.
+        assert_accepted(submit(client, date=days_from_now(28)), sheets)
 
     def test_just_outside_one_month_is_rejected(self, client, sheets):
-        assert_rejected(submit(client, date=days_from_now(40)), sheets, 'one month')
+        # No calendar month is longer than 31 days, so 32 is always outside.
+        assert_rejected(submit(client, date=days_from_now(32)), sheets, 'one month')
+
+    def test_the_cap_is_a_calendar_month_not_a_fixed_span(self, app_module):
+        from datetime import date
+        assert app_module.max_booking_date(date(2025, 1, 31)) == date(2025, 2, 28)
+        assert app_module.max_booking_date(date(2024, 1, 31)) == date(2024, 2, 29)
+        assert app_module.max_booking_date(date(2025, 8, 31)) == date(2025, 9, 30)
+        assert app_module.max_booking_date(date(2025, 12, 15)) == date(2026, 1, 15)
 
     @pytest.mark.parametrize('date', ['not-a-date', '13/04/2025', '2025-13-45', '99999999'])
     def test_malformed_dates_are_rejected(self, client, sheets, date):
         assert_rejected(submit(client, date=date), sheets, 'valid date')
+
+    @pytest.mark.parametrize('url', ['/', '/book'])
+    def test_the_picker_is_limited_to_the_window(self, client, app_module, url):
+        """Rendered into the HTML, not left to JavaScript: it is what greys the
+        unbookable days out in the native calendar before any script runs."""
+        import re
+        today = datetime.now(app_module.sydney_tz).date()
+        html = client.get(url).get_data(as_text=True)
+        tag = re.search(r'<input type="date" id="date".*?>', html, re.S)
+        assert tag, f'no date picker on {url}'
+        assert f'min="{today}"' in tag.group(0)
+        assert f'max="{app_module.max_booking_date(today)}"' in tag.group(0)
 
 
 ALL_SLOTS = ['12:00', '12:30', '13:00', '13:30', '17:00', '17:30',

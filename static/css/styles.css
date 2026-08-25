@@ -1033,7 +1033,17 @@ body {
     line-height: 1.25;
 }
 
-/* One line, always — the romanised name should not break across two. */
+/* One line, always — the romanised name should not break across two.
+
+   The face is pinned rather than inherited, and shared with the EN half of the
+   language switch so the two can never drift: in Chinese mode the body font is
+   the Song stack, which would otherwise set this Latin line in Songti's own
+   roman letters instead of the Garamond used everywhere else in English. */
+.brand-en,
+.lang-opt--en {
+    font-family: 'EB Garamond', Garamond, Georgia, serif;
+}
+
 .brand-en {
     display: block;
     font-size: 0.4em;

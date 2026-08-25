@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 from html import escape
 from itsdangerous import URLSafeSerializer, BadSignature
+import calendar
 import logging
 from pytz import timezone
 import threading
@@ -248,7 +249,7 @@ def normalise_staff_phone(raw):
 VALID_TIMES = {"12:00", "12:30", "13:00", "13:30",
                "17:00", "17:30", "18:00", "18:30",
                "19:00", "19:30", "20:00", "20:30"}
-VALID_PARTY_SIZES = {"1-2", "3-4", "4-6", "7-10", "10+"}
+VALID_PARTY_SIZES = {"1-2", "3-4", "5-6", "7-10", "10+"}
 VALID_DISH_TYPES = {"大火锅", "小火锅", "炒菜"}
 
 # Zero-padded HH:MM sorts correctly as text, so this is service order.
@@ -284,7 +285,23 @@ def is_dinner_only(date_str):
     except (ValueError, TypeError):
         return False
 
-MAX_ADVANCE_DAYS = 32      # client picker allows ~1 month; keep server slightly lenient
+
+# A booking may be placed up to one calendar month ahead — the same window the
+# date picker on the form offers. A calendar month rather than a fixed number of
+# days, so "one month" lands where a customer reading the form expects it to in
+# every month of the year.
+def max_booking_date(today):
+    """The last date a new booking may be made for, one month from today.
+
+    A short target month clamps to its last day: 31 January maps to 28 February,
+    not to 3 March, which is what adding a fixed 31 days would give.
+    """
+    year = today.year + (today.month == 12)
+    month = today.month % 12 + 1
+    return today.replace(year=year, month=month,
+                         day=min(today.day, calendar.monthrange(year, month)[1]))
+
+
 # How far ahead a customer may move an existing booking, counted from the day
 # they are making the change — not from the date the booking currently holds,
 # which would let a booking walk itself forward a month at a time.
@@ -526,7 +543,7 @@ def validate_reservation(form):
     today = now.date()
     if booking_date < today:
         return None, "Bookings cannot be made for a past date."
-    if booking_date > today + timedelta(days=MAX_ADVANCE_DAYS):
+    if booking_date > max_booking_date(today):
         return None, "Bookings can only be made up to one month in advance."
 
     if booking_date == today:
@@ -730,8 +747,17 @@ def _email_document(subject, preheader, intro_html, row_html,
                     border:1px solid #eee2d8;">
 
         <tr><td align="center" style="background:#8B1A1A;padding:30px 32px 26px;">
-          <div style="font-family:{EMAIL_FONT_BRAND};font-size:34px;color:#ffffff;
-                      letter-spacing:.02em;line-height:1.25;">九龙鼎重庆火锅</div>
+          <!-- The name is set in the masthead calligraphy face, as an image:
+               Gmail drops @font-face outright, so the webfont the site uses
+               could never reach most readers. Drawn from the same TTF the
+               subset webfont is cut from, at 2x, on the header's own red so a
+               client's dark mode cannot invert around it. Blocked images fall
+               back to the alt text, styled below to match. -->
+          <img src="{ASSET_BASE_URL}/static/img/email-brand-zh.png" alt="九龙鼎重庆火锅"
+               width="257" height="44"
+               style="display:block;margin:0 auto;border:0;outline:none;text-decoration:none;
+                      font-family:{EMAIL_FONT_BRAND};font-size:34px;color:#ffffff;
+                      letter-spacing:.02em;line-height:1.25;">
           <div style="font-family:{EMAIL_FONT};font-size:12px;color:#dda9a2;
                       margin-top:10px;letter-spacing:.16em;text-transform:uppercase;
                       text-indent:.16em;white-space:nowrap;">JiuLongDing Chongqing Hotpot</div>
@@ -1285,6 +1311,19 @@ def redirect_old_domain():
         return redirect(new_url, code=301)
 
 
+@app.after_request
+def allow_cross_origin_fonts(response):
+    """Let the confirmation emails use the site's own webfonts.
+
+    A font fetched from another origin needs CORS, and an email is always
+    another origin — without this header the mail clients that do honour
+    @font-face still drop EB Garamond and fall back to Georgia.
+    """
+    if request.path.startswith('/static/fonts/'):
+        response.headers['Access-Control-Allow-Origin'] = '*'
+    return response
+
+
 @app.route('/robots.txt')
 def robots_txt():
     return "User-agent: *\nAllow: /\nSitemap: https://jiulongding.au/sitemap.xml\n", 200, {'Content-Type': 'text/plain'}
@@ -1354,6 +1393,18 @@ def consume_form_token(submitted):
             return 'duplicate', None
 
     return 'unknown', None
+
+
+@app.context_processor
+def booking_window():
+    """The bookable date range, for the `min`/`max` on every date picker.
+
+    Rendered into the HTML rather than left to JavaScript so the native
+    calendar greys out the days we cannot take before a single script runs —
+    and so the range is the restaurant's Sydney day, not the browser's.
+    """
+    today = datetime.now(sydney_tz).date()
+    return {'min_date': str(today), 'max_date': str(max_booking_date(today))}
 
 
 @app.route("/")
@@ -2398,9 +2449,9 @@ def _staff_edit_changes(data, row, current_date):
         today = datetime.now(sydney_tz).date()
         if target < today:
             return None, None, 'That date has already passed.'
-        if target > today + timedelta(days=MAX_ADVANCE_DAYS):
-            return None, None, ('Bookings can only be moved up to '
-                                f'{MAX_ADVANCE_DAYS} days ahead.')
+        if target > max_booking_date(today):
+            return None, None, ('Bookings can only be moved up to one month '
+                                'ahead.')
         # Against the tab the row lives in, not its Date cell. The tab is what
         # decides which day a booking is on, and the two can disagree: an older
         # row with that cell left blank would otherwise read as a move to the

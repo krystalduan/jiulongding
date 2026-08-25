@@ -189,7 +189,7 @@ class TestCoversForTheDay:
 
     def test_cancelled_tables_are_not_cooked_for(self, client, sheets):
         self._day(sheets, ('3-4', 'Pending'), ('7-10', 'Cancelled'),
-                  ('4-6', 'Modified'))
+                  ('5-6', 'Modified'))
         assert self._covers(client) == (3, 4, False)
 
 

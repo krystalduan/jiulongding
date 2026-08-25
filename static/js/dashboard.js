@@ -188,7 +188,7 @@ let bookings = {};
 
 const TIMES = ['12:00', '12:30', '13:00', '13:30', '17:00', '17:30',
     '18:00', '18:30', '19:00', '19:30', '20:00', '20:30'];
-const PARTY_SIZES = ['1-2', '3-4', '4-6', '7-10', '10+'];
+const PARTY_SIZES = ['1-2', '3-4', '5-6', '7-10', '10+'];
 
 function displayReservations(reservations) {
     const container = document.getElementById('reservationsContainer');

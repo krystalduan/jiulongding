@@ -99,7 +99,7 @@
                         <label for="people">人位 Number of People</label>
                         <select id="people" name="people" required>
                             <option value="">Select party size</option>
-                            {% for size in ['1-2', '3-4', '4-6', '7-10', '10+'] %}
+                            {% for size in ['1-2', '3-4', '5-6', '7-10', '10+'] %}
                             <option value="{{ size }}" {% if v.get('people')==size %}selected{% endif %}>{{ size }}
                             </option>
                             {% endfor %}
@@ -109,7 +109,8 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="date">日期 Date</label>
-                        <input type="date" id="date" name="date" value="{{ v.get('date', '') }}" required>
+                        <input type="date" id="date" name="date" value="{{ v.get('date', '') }}"
+                            min="{{ min_date }}" max="{{ max_date }}" required>
                     </div>
                     <div class="form-group">
                         <label for="time">时间 Time</label>
@@ -182,8 +183,23 @@
 
             const currentDate = new Date();
             const today = localDate(currentDate);
-            const oneMonthAhead = new Date(currentDate);
-            oneMonthAhead.setMonth(oneMonthAhead.getMonth() + 1);
+
+            // One calendar month out, clamped to the last day of a short month:
+            // adding a month to 31 August otherwise overflows to 1 October,
+            // which is a day past the window the server will accept.
+            function addOneMonth(d) {
+                const result = new Date(d.getFullYear(), d.getMonth() + 1, d.getDate());
+                if (result.getDate() !== d.getDate()) {
+                    result.setDate(0);
+                }
+                return result;
+            }
+
+            const oneMonthAhead = addOneMonth(currentDate);
+
+            // Zero-padded ISO dates compare correctly as plain strings.
+            function laterOf(a, b) { return !a ? b : (a > b ? a : b); }
+            function earlierOf(a, b) { return !a ? b : (a < b ? a : b); }
 
             const datePicker = document.getElementById('date');
 
@@ -212,6 +228,21 @@
                 if (!chosen) {
                     Array.from(timeSelect.options).forEach(o => o.disabled = false);
                     if (timeHint) timeHint.hidden = true;
+                    return;
+                }
+
+                // The calendar greys out the days we cannot take, but the field
+                // can still be typed into, so refuse anything outside the
+                // window here as well rather than at the server.
+                const minDate = datePicker.getAttribute('min');
+                const maxDate = datePicker.getAttribute('max');
+                if ((minDate && chosen < minDate) || (maxDate && chosen > maxDate)) {
+                    datePicker.value = '';
+                    Array.from(timeSelect.options).forEach(o => o.disabled = false);
+                    if (timeHint) {
+                        timeHint.textContent = 'Please choose a date between today and one month from today.';
+                        timeHint.hidden = false;
+                    }
                     return;
                 }
 
@@ -256,8 +287,14 @@
             }
 
             if (datePicker) {
-                datePicker.setAttribute('min', today);
-                datePicker.setAttribute('max', localDate(oneMonthAhead));
+                // The template already carries the restaurant's own window, so
+                // only ever narrow it: a browser clock behind Sydney would
+                // otherwise reopen a day that has already passed here.
+                const serverMin = datePicker.getAttribute('min');
+                const serverMax = datePicker.getAttribute('max');
+                const clientMax = localDate(oneMonthAhead);
+                datePicker.setAttribute('min', laterOf(serverMin, today));
+                datePicker.setAttribute('max', earlierOf(serverMax, clientMax));
                 datePicker.addEventListener('change', syncTimeOptions);
                 // A rejected submit comes back with the date already filled in,
                 // so apply the same-day rules now rather than waiting for a
