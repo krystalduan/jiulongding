@@ -126,7 +126,6 @@ body {
     box-shadow: 0 2px 12px rgba(0,0,0,0.15);
 }
 
-
 .home-nav ul {
     list-style-type: none;
     margin: 0;
@@ -163,7 +162,7 @@ body {
     display: flex;
     width: 100%;
     overflow: hidden;
-    /* Same pair as the success page: JPEG fallback, then WebP. */
+    /* JPEG fallback, then WebP */
     background-image: url(../photos/IMG_20210306_194151.jpg);
     background-image: url(../photos/hero-1200.webp);
     background-size: cover;
@@ -191,7 +190,8 @@ body {
 
 @font-face {
     font-family: 'EB Garamond';
-    src: url(../fonts/EBGaramond-VariableFont_wght.woff2) format('woff2');
+    /* Latin-only subset - the full font is ~295KB. Emails still use the full file. */
+    src: url(../fonts/EBGaramond-latin.woff2) format('woff2');
     font-weight: 100 900;
     font-display: swap;
 }
@@ -268,22 +268,16 @@ body {
 
 .home a {
     color: rgb(255, 255, 255);
-    /* Replace with your desired color */
     font-size: 4vh;
     text-decoration: none;
-    /* Removes the underline, optional */
     font-weight: bold;
-    /*Makes the text bold, optional*/
     line-height: 1.2;
     gap: 2;
 }
 
 .home a:hover {
     color:  rgb(241, 188, 88);
-    /* Change color on hover, optional */
     text-decoration: underline;
-    /* Add underline on hover, optional */
-
 
 }
 
@@ -386,7 +380,6 @@ body {
     color: #0e0d0d;
 }
 
-
 .info-section h3 {
     color: #b01414;
     font-family: 'EB Garamond', Georgia, serif;
@@ -438,7 +431,6 @@ body {
 .opening-hours td:last-child {
     text-align: right;
 }
-
 
 /* -- .reservation */
 .reservation {
@@ -574,7 +566,6 @@ select:valid {
     padding-right: 0;
 }
 
-
 ::-webkit-calendar-picker-indicator {
     cursor: pointer;
     background-color: #c0c0c0;
@@ -584,7 +575,6 @@ select:valid {
     align-items: center;
 
 }
-
 
 .submit-btn {
     background-color: #8B1A1A;
@@ -610,20 +600,17 @@ select:valid {
     transform: translateY(1px);
 }
 
-
 body {
     background-color: #FAF7F2;
     color: #1C1008;
 }
-
 
 .grid {
     display: grid;
     grid-template-columns: repeat(1, minmax(0, 1fr));
 }
 
-/* Why a time is unavailable, under the time picker. Quiet enough to ignore
-   when it is only restating the rules, legible when a day is closed. */
+/* Why a time is unavailable */
 .field-hint {
     margin: 0.4rem 0 0;
     font-size: 0.85rem;
@@ -631,8 +618,6 @@ body {
     color: #6b5545;
 }
 
-/* Sits on the cream .reservation background, so it needs a panel of its own to
-   read as an alert rather than as body copy. */
 .error-message {
     max-width: 960px;
     margin: 0 auto 1.75rem;
@@ -677,34 +662,25 @@ body {
 
 .social-links a {
     color: #f8f8f8;
-    /* Matches text color */
     text-decoration: none;
-    /* Removes underline */
     margin: 0 0.5rem;
-    /* Adds space between links */
     transition: color 0.3s;
-    /* Adds a hover effect */
 }
 
 .social-links a:hover {
     color: #bd0202;
-    /* Highlight on hover (e.g., orange) */
 }
 
 /* reservation success*/
 .success-page {
     position: relative;
     min-height: 100vh;
-    /* Full viewport height */
     display: flex;
     width: 100%;
     align-items: center;
-    /* Center vertically */
     justify-content: center;
-    /* Center horizontally */
-    /* First line is a fallback for browsers without WebP; the second wins
-       everywhere else. Phones get the 1200px file, desktops the 1920px one
-       (see the media query below). */
+
+    /* JPEG fallback, then WebP */
     background-image: url(../photos/IMG_20210306_194151.jpg);
     background-image: url(../photos/hero-1200.webp);
     background-size: cover;
@@ -712,7 +688,6 @@ body {
     background-repeat: no-repeat;
     background-color: #2b2422;
     padding: 20px;
-    /* Add some padding */
     box-sizing: border-box;
 }
 
@@ -741,10 +716,8 @@ body {
     max-width: 600px;
     width: 100%;
     position: relative;
-    /* Above the overlay */
     z-index: 2;
     color: #333;
-    /* Ensure text is readable */
 }
 
 .success-message {
@@ -797,7 +770,7 @@ body {
     color: #333;
 }
 
-/* Manage / cancel booking page ------------------------------------------- */
+/* Manage booking page */
 
 .manage-container {
     max-width: 560px;
@@ -838,15 +811,13 @@ body {
     gap: 12px;
     align-items: stretch;
     flex-wrap: wrap;
-    /* Each control sits on its own row, so the date and time dropdowns are
-       always exactly the same width as each other. */
+    /* one control per row so both dropdowns match width */
     margin-bottom: 18px;
 }
 
 .manage-row select {
     flex: 1 1 100%;
     width: 100%;
-    /* Identical box metrics to the other dropdown, whatever the option text. */
     box-sizing: border-box;
     padding: 12px 14px;
     border: 1px solid #d8ccc3;
@@ -891,12 +862,7 @@ body {
     color: #8B1A1A;
 }
 
-/* ------------------------------------------------------------------------
-   "Back to Homepage" on the manage page.
-   A plain text link, not a filled button: it is the quietest thing on the
-   page, so it should not carry the same weight as Update or Cancel.
-   Change `margin-top` to sit it further from or closer to the card above.
-   ------------------------------------------------------------------------ */
+/* "Back to Homepage" link on the manage page */
 .actions--quiet {
     margin-top: 14px;
 }
@@ -919,12 +885,7 @@ body {
     color: #7d736c;
 }
 
-/* ------------------------------------------------------------------------
-   Language switching.
-   Both languages are always in the HTML; only one is shown. `data-lang` on
-   <html> decides which, so a single attribute flips the whole page and there
-   is no per-element JavaScript.
-   ------------------------------------------------------------------------ */
+/* Language switching - data-lang on <html> picks which one shows */
 .lang-zh {
     display: none;
 }
@@ -937,13 +898,7 @@ body {
     display: inline;
 }
 
-/* The bundled webfont is subset to 九龙鼎重庆火锅, so everything except the
-   restaurant name needs a stack that is actually installed on the reader's
-   machine.
-
-   Song/Ming faces first, for the 复古 feel: these are the typefaces of printed
-   Chinese books, and they sit with the Garamond used for the English. Kaiti
-   (brush-written) follows as a warmer fallback, and only then a sans. */
+/* Webfont only covers the restaurant name, so fall back to installed Song/Kai fonts */
 [data-lang="zh"] body,
 .lang-zh {
     font-family: 'Songti SC', STSong, 'Noto Serif SC', 'Source Han Serif SC',
@@ -951,8 +906,7 @@ body {
     letter-spacing: 0.02em;
 }
 
-/* The pill: EN | 中, top right of the card. The inactive half is dimmed so it
-   reads as a switch rather than two separate buttons. */
+/* EN | 中 toggle */
 .lang-switch {
     display: flex;
     justify-content: flex-end;
@@ -1001,10 +955,7 @@ body {
     font-weight: normal;
 }
 
-/* ------------------------------------------------------------------------
-   Page heading. The restaurant name is the loudest thing on the card; what
-   the page is for sits under it, quieter.
-   ------------------------------------------------------------------------ */
+/* Page heading */
 .brand-title {
     font-size: 2.15rem;
     letter-spacing: 0.02em;
@@ -1012,15 +963,7 @@ body {
     line-height: 1.2;
 }
 
-/* The name reads top to bottom: Chinese, then the English under it. Both are
-   always shown — the name is the name in either language, so it is not part
-   of what the EN/中 switch hides.
-
-   The subset webfont covers exactly these seven characters, so the whole name
-   renders in it — the same face as the homepage masthead. `font-family` is
-   restated here on purpose: `.lang-zh` sets the body Chinese stack at the same
-   specificity as `.chinese`, so without a two-class selector the later rule
-   would win and the name would quietly fall back to Songti. */
+/* Restaurant name, always both languages. Two-class selector so .lang-zh doesn't override the font. */
 .brand-title .chinese {
     font-family: 'chineseFont';
 }
@@ -1028,17 +971,11 @@ body {
 .brand-zh {
     display: block;
     font-size: 1.3em;
-    /* Tight: the characters should sit as one carved block, not spaced out. */
     letter-spacing: 0.02em;
     line-height: 1.25;
 }
 
-/* One line, always — the romanised name should not break across two.
-
-   The face is pinned rather than inherited, and shared with the EN half of the
-   language switch so the two can never drift: in Chinese mode the body font is
-   the Song stack, which would otherwise set this Latin line in Songti's own
-   roman letters instead of the Garamond used everywhere else in English. */
+/* Keep on one line, and pin Garamond so zh mode doesn't use Songti's latin letters */
 .brand-en,
 .lang-opt--en {
     font-family: 'EB Garamond', Garamond, Georgia, serif;
@@ -1061,8 +998,7 @@ body {
     margin-bottom: 26px;
 }
 
-/* Cancelling is destructive and irreversible, so it is visually separated
-   from the reschedule form rather than sitting beside it. */
+/* Cancel is kept apart from the reschedule form */
 .manage-danger {
     margin-top: 32px;
     padding-top: 24px;
@@ -1127,7 +1063,6 @@ body {
     }
 }
 
-
 /* Responsive Adjustments */
 
 @media (max-width: 768px) {
@@ -1135,7 +1070,7 @@ body {
     .home {
         height: 80vh;
     }
-    
+
     .content {
         padding-left: 5%;
         padding-right: 5%;
@@ -1148,14 +1083,11 @@ body {
 
     .content .header-group {
         gap: 0.5rem;
-        /* Keep them closer together on mobile */
         justify-content: center;
     }
 
-    /* Adjust Chinese character sizes for mobile */
     .content h1 {
         font-size: 12vh;
-        /* Slightly smaller */
     }
 
     .content h2 {
@@ -1163,21 +1095,17 @@ body {
         padding-top: 1rem;
     }
 
-    /* Center the English text group */
     .content .subheader-group {
         width: 100%;
         align-items: center;
         padding-left: 0;
     }
 
-    /* Make nav more compact. Note: no top/right offsets here — the bar is
-       position:fixed and must stay flush against the viewport edges, or it
-       visibly detaches from the top-right corner on narrow screens. */
+    /* Compact nav. No top/right offsets - it's fixed and must stay flush. */
     .home-nav ul {
         padding: 0 12px;
         height: 52px;
-        /* Clear the notch / rounded corners on modern phones. Plain padding
-           above is the fallback for browsers without env(). */
+        /* notch safe area */
         padding-left: max(12px, env(safe-area-inset-left, 0px));
         padding-right: max(12px, env(safe-area-inset-right, 0px));
     }

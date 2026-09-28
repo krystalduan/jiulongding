@@ -1,24 +1,14 @@
 'use strict';
 
-// Two views, one page: the days ahead, and one date's bookings. Which one is
-// showing is held in the URL (#d=2026-08-14) rather than in a variable, so the
-// phone's back button works and a reload keeps staff on the day they were on.
+// Current view lives in the URL hash (#d=2026-08-14) so back/reload work.
 
 let currentDate = null;
-// Set when something is changed in the day view, so the trip back to the
-// overview bypasses the server's 60-second cache instead of showing staff the
-// count they just changed.
+// Set after an edit so the overview skips the server cache.
 let upcomingStale = false;
-// Today in Sydney, from the server. A staff phone set to another timezone would
-// otherwise put yesterday within reach of the edit form's date picker.
+// Sydney date from the server, not the phone's clock.
 const todayInSydney = document.body.dataset.today || '';
 
-// ── Escaping ───────────────────────────────────────────────────────────────
-//
-// Everything below comes out of the spreadsheet, and a booking's notes are
-// only length-checked on the way in — nothing strips markup. Interpolating
-// them raw meant a booking whose notes read <img src=x onerror=...> ran script
-// in a logged-in staff session.
+// Sheet data isn't sanitised on the way in, so always escape.
 
 const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
@@ -27,7 +17,7 @@ function esc(value) {
         .replace(/[&<>"']/g, ch => ESCAPES[ch]);
 }
 
-// ── Routing ────────────────────────────────────────────────────────────────
+// Routing
 
 document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('hashchange', route);
@@ -43,8 +33,6 @@ function route() {
     }
 }
 
-// Navigation only writes the hash; the hashchange handler does the rendering,
-// so clicking a day and pressing back take exactly the same path.
 function openDate(date) {
     window.location.hash = 'd=' + date;
 }
@@ -52,7 +40,7 @@ function openDate(date) {
 function showUpcoming() {
     if (window.location.hash) {
         window.location.hash = '';
-        return;                  // hashchange will bring us straight back here
+        return;
     }
     currentDate = null;
     document.getElementById('dayView').hidden = true;
@@ -78,7 +66,7 @@ function jumpToDate() {
     openDate(value);
 }
 
-// ── The days ahead ─────────────────────────────────────────────────────────
+// Days ahead
 
 async function loadUpcoming(force) {
     const list = document.getElementById('upcomingList');
@@ -86,8 +74,6 @@ async function loadUpcoming(force) {
         list.innerHTML = '<div class="loading"><div class="spinner"></div>Loading the days ahead...</div>';
     }
 
-    // A change made in a day view makes the cached counts wrong, and so does
-    // pressing Refresh on purpose.
     const fresh = force || upcomingStale;
 
     try {
@@ -138,7 +124,7 @@ function displayUpcoming(days) {
     `).join('');
 }
 
-// Party size is a bucket in the sheet, so covers is a range, not a number.
+// Party size is a bucket, so covers is a range.
 function coversText(day) {
     const low = day.covers_low || 0;
     const high = day.covers_high || 0;
@@ -147,7 +133,7 @@ function coversText(day) {
     return `${span}${day.covers_open ? '+' : ''} covers`;
 }
 
-// ── One date's bookings ────────────────────────────────────────────────────
+// One date's bookings
 
 async function loadDay(date) {
     if (!date) return;
@@ -182,8 +168,6 @@ async function loadDay(date) {
     }
 }
 
-// Kept so the edit panel can read a booking's current values without another
-// round trip, and so a cancelled save can put the form back as it was.
 let bookings = {};
 
 const TIMES = ['12:00', '12:30', '13:00', '13:30', '17:00', '17:30',
@@ -199,9 +183,7 @@ function displayReservations(reservations) {
     container.innerHTML = reservations.map(reservation => {
         const status = reservation.confirmed.toLowerCase().trim();
 
-        // 'Modified' is the row left behind when a customer moved this booking
-        // to another date. It is a record, not a table to serve, so it reads
-        // like a cancellation and offers no actions.
+        // Modified = booking moved to another date. Read-only.
         const statusText = status === 'confirmed' || status === 'yes'
             ? 'Confirmed'
             : status === 'cancelled' || status === 'no'
@@ -211,9 +193,7 @@ function displayReservations(reservations) {
                     : 'Pending';
 
         const isFinished = statusText === 'Cancelled' || statusText === 'Modified';
-        // A booking whose number cannot receive the reminder text will sit at
-        // Pending for ever unless somebody rings them, so it says so rather
-        // than looking like every other table still waiting to reply.
+        // Can't receive the reminder text, needs a call.
         const needsCall = statusText === 'Pending' && !reservation.textable;
         const badgeText = needsCall ? 'Call to confirm' : statusText;
         const statusClass = needsCall ? 'status-call' : 'status-' + statusText.toLowerCase();
@@ -272,11 +252,7 @@ function displayReservations(reservations) {
     }).join('');
 }
 
-// ── Editing a booking ──────────────────────────────────────────────────────
-//
-// The panel opens inside the card rather than as a modal: this gets used on a
-// phone during service, where a dialog means scroll-locking and focus-trapping
-// a page somebody is trying to read the rest of.
+// Edit panel (inline, not a modal - easier on a phone)
 
 function openEditor(rowNumber) {
     const booking = bookings[rowNumber];
@@ -284,7 +260,7 @@ function openEditor(rowNumber) {
     if (!booking || !card) return;
 
     const panel = card.querySelector('.edit-panel');
-    if (!panel.hidden) {              // Edit again = close
+    if (!panel.hidden) {  // toggle
         closeEditor(rowNumber);
         return;
     }
@@ -354,9 +330,7 @@ async function saveEdit(rowNumber) {
     const date = field('date').value;
     const notify = field('notify').checked;
 
-    // No optimistic update here, unlike the status buttons: a change of date
-    // moves this booking to another day's tab, so there is no version of the
-    // card that is right until the write has actually landed.
+    // No optimistic update - a date change moves the booking to another tab.
     saveButton.disabled = true;
     saveButton.textContent = 'Saving...';
 
@@ -372,8 +346,7 @@ async function saveEdit(rowNumber) {
                 time: field('time').value,
                 people: field('people').value,
                 phone: field('phone').value,
-                // What this card was showing when the panel opened. The server
-                // refuses the write if the sheet has moved on since.
+                // server rejects the save if these no longer match
                 expect: {
                     time: booking.time,
                     people: booking.people,
@@ -394,9 +367,7 @@ async function saveEdit(rowNumber) {
             showNotification(result.message || 'Could not save that change', 'error');
             saveButton.disabled = false;
             saveButton.textContent = 'Save';
-            // Somebody else has changed this booking, so the list on screen is
-            // no longer what is in the sheet. Re-read it rather than leaving
-            // staff editing a stale copy.
+            // Someone else changed it, reload.
             if (result.stale) {
                 upcomingStale = true;
                 loadDay(currentDate);
@@ -407,8 +378,6 @@ async function saveEdit(rowNumber) {
         upcomingStale = true;
         showNotification(result.message, 'success');
         (result.warnings || []).forEach(warning => showNotification(warning, 'warn'));
-        // A move takes the booking off this date, so the day has to be re-read
-        // either way: the card is gone from here, or its details changed.
         loadDay(currentDate);
     } catch (error) {
         console.error('Error saving booking:', error);
@@ -418,8 +387,6 @@ async function saveEdit(rowNumber) {
     }
 }
 
-// The row number is all a write needs: the date it belongs to is the day the
-// list was read from, which is currentDate, not a value out of the sheet.
 function actionButtons(statusText, rowNumber) {
     const row = esc(rowNumber);
     return `
@@ -438,7 +405,6 @@ function updateStats(data) {
     document.getElementById('totalReservations').textContent = data.reservations.length;
     document.getElementById('confirmedCount').textContent = data.total_confirmed;
     document.getElementById('pendingCount').textContent = data.total_pending;
-    // A range, for the same reason as on the overview: party size is a bucket.
     const low = data.covers_low || 0;
     const high = data.covers_high || 0;
     document.getElementById('coversCount').textContent =
@@ -458,8 +424,6 @@ async function updateStatus(rowNumber, newStatus) {
     quickActions.innerHTML = actionButtons(newStatus, rowNumber);
 
     showNotification(`Reservation ${newStatus.toLowerCase()}`, 'success');
-    // The day's counts have moved, so the overview must not be served from
-    // cache on the way back.
     upcomingStale = true;
 
     try {
@@ -469,9 +433,6 @@ async function updateStatus(rowNumber, newStatus) {
             body: JSON.stringify({
                 date,
                 row_number: rowNumber,
-                // Which booking the dashboard believes is at that row. Without
-                // it, a row inserted into the sheet by hand would send this
-                // write to somebody else's table.
                 reservation_id: (bookings[rowNumber] || {}).reservation_id,
                 status: newStatus
             })
@@ -494,14 +455,13 @@ async function updateStatus(rowNumber, newStatus) {
     }
 }
 
-// ── Shared bits ────────────────────────────────────────────────────────────
+// Helpers
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
 
-// Built from the parts rather than new Date('2026-08-14'), which is parsed as
-// UTC midnight and so reads as the day before in half the world.
+// Not new Date('2026-08-14') - that parses as UTC.
 function describeDate(iso) {
     const [year, month, day] = iso.split('-').map(Number);
     if (!year || !month || !day) return iso;
@@ -519,10 +479,7 @@ function emptyState(icon, heading, detail) {
     `;
 }
 
-// Stacked, because a save can report more than one thing at once — "moved to
-// Saturday", and that the move dropped the booking back to Pending. These used
-// to be positioned individually, so the second one landed exactly on top of the
-// first and the news staff most needed was the news they could not read.
+// Toasts stack so multiple messages don't overlap.
 function showNotification(message, type) {
     let stack = document.getElementById('toastStack');
     if (!stack) {
@@ -537,6 +494,5 @@ function showNotification(message, type) {
     toast.textContent = message;
     stack.appendChild(toast);
 
-    // Anything that is not a plain success is worth reading twice.
     setTimeout(() => toast.remove(), type === 'success' ? 3000 : 7000);
 }

@@ -13,9 +13,14 @@
         content="Authentic Chongqing hotpot in Sydney's Haymarket. Book your table online — 71 Dixon Street, Haymarket NSW 2000.">
     <meta property="og:url" content="https://jiulongding.au/">
     <meta property="og:type" content="restaurant">
+    <!-- preload the hero so it doesn't wait on the CSS -->
+    <link rel="preload" as="image" fetchpriority="high" href="{{ url_for('static', filename='photos/hero-1200.webp') }}"
+        media="(max-width: 999px)">
+    <link rel="preload" as="image" fetchpriority="high" href="{{ url_for('static', filename='photos/hero-1920.webp') }}"
+        media="(min-width: 1000px)">
     <link rel="preload" href="{{ url_for('static', filename='fonts/chineseFont-subset.woff2') }}" as="font"
         type="font/woff2" crossorigin>
-    <link rel="preload" href="{{ url_for('static', filename='fonts/EBGaramond-VariableFont_wght.woff2') }}" as="font"
+    <link rel="preload" href="{{ url_for('static', filename='fonts/EBGaramond-latin.woff2') }}" as="font"
         type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
@@ -127,15 +132,14 @@
             </div>
 
         </section>
-        <!-- Reservation Form -->
+        <!-- Reservation form -->
         <section id="reservation" class="reservation">
             <div class="animate-on-scroll">
                 <div class="title">Reservation Enquiries</div>
                 <p class="sub-title">Book your table quickly and easily below</p>
             </div>
 
-            {# `values` comes back populated when a submit was rejected, so the
-            customer never has to retype the whole form. #}
+            {# refilled after a rejected submit #}
             {% set v = values | default({}) %}
 
             {% if error %}
@@ -148,7 +152,7 @@
                 id="reservation-form">
                 <input type="hidden" name="form_token" value="{{ form_token }}">
                 <input type="hidden" name="form_source" value="index">
-                <!-- Honeypot: hidden from humans, bots fill it in and get discarded -->
+                <!-- honeypot -->
                 <div aria-hidden="true"
                     style="position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;">
                     <label for="website">Website</label>
@@ -239,13 +243,12 @@
         </footer>
     </main>
     <script>
-        // show sidebar 
         function showSidebar() {
             const sidebar = document.querySelector('.sidebar')
             sidebar.style.display = 'flex'
         }
 
-        // intersection Observer for scroll-triggered animations
+        // scroll animations
         const observerOptions = {
             threshold: 0.1,
             rootMargin: '0px 0px -50px 0px'
@@ -256,7 +259,6 @@
                 if (entry.isIntersecting) {
                     entry.target.classList.add('visible');
 
-                    // add specific animation classes based on position
                     const rect = entry.target.getBoundingClientRect();
                     const centerX = window.innerWidth / 2;
 
@@ -266,28 +268,23 @@
                         entry.target.classList.add('fade-in-right');
                     }
 
-                    // Special handling for home section elements
                     if (entry.target.closest('.home')) {
                         entry.target.classList.add('fade-in-up');
                     }
 
-                    // Special handling for info items (scale in effect)
                     if (entry.target.classList.contains('info-item')) {
                         entry.target.classList.add('scale-in');
                     }
 
-                    // Stop observing once animated
                     observer.unobserve(entry.target);
                 }
             });
         }, observerOptions);
 
-        // Observe all elements with the animate-on-scroll class
         document.addEventListener('DOMContentLoaded', () => {
             const elementsToAnimate = document.querySelectorAll('.animate-on-scroll');
             elementsToAnimate.forEach(el => observer.observe(el));
 
-            // Initial animation for home section
             setTimeout(() => {
                 const homeElements = document.querySelectorAll('.home .animate-on-scroll');
                 homeElements.forEach(el => {
@@ -295,7 +292,6 @@
                 });
             }, 300);
 
-            // Smooth scrolling for anchor links
             document.querySelectorAll('a[href^="#"]').forEach(anchor => {
                 anchor.addEventListener('click', function (e) {
                     e.preventDefault();
@@ -310,9 +306,7 @@
                 });
             });
 
-            // Set up date picker constraints.
-            // Local calendar date, not UTC: toISOString() rolls over ~10 hours
-            // early in Sydney, which made "is this today?" comparisons wrong.
+            // local date - toISOString() is UTC
             function localDate(d) {
                 return d.getFullYear() + '-' +
                     String(d.getMonth() + 1).padStart(2, '0') + '-' +
@@ -322,9 +316,7 @@
             const currentDate = new Date();
             const today = localDate(currentDate);
 
-            // One calendar month out, clamped to the last day of a short month:
-            // adding a month to 31 August otherwise overflows to 1 October,
-            // which is a day past the window the server will accept.
+            // one month ahead, clamped (31 Aug -> 30 Sep)
             function addOneMonth(d) {
                 const result = new Date(d.getFullYear(), d.getMonth() + 1, d.getDate());
                 if (result.getDate() !== d.getDate()) {
@@ -335,29 +327,22 @@
 
             const oneMonthAhead = addOneMonth(currentDate);
 
-            // Zero-padded ISO dates compare correctly as plain strings.
             function laterOf(a, b) { return !a ? b : (a > b ? a : b); }
             function earlierOf(a, b) { return !a ? b : (a < b ? a : b); }
 
             const datePicker = document.getElementById('date');
 
-            // Tuesday and Wednesday the kitchen opens at 5pm, so there is no
-            // lunch sitting. JS getDay(): Sunday=0, so Tuesday=2, Wednesday=3.
+            // no lunch Tue/Wed (getDay: Sunday=0)
             const DINNER_ONLY_WEEKDAYS = [2, 3];
             const LUNCH_TIMES = ['12:00', '12:30', '13:00', '13:30'];
 
             function isDinnerOnly(value) {
                 const [y, m, d] = value.split('-').map(Number);
                 if (!y || !m || !d) return false;
-                // Built from parts rather than new Date(value): an ISO string
-                // parses as UTC, which lands on the previous weekday for any
-                // reader behind Greenwich.
                 return DINNER_ONLY_WEEKDAYS.includes(new Date(y, m - 1, d).getDay());
             }
 
-            // Both rules in one pass: a day we are shut for lunch, and the two
-            // hours' notice a same-day booking needs. They can apply together —
-            // a Tuesday that is also today leaves only the later dinner slots.
+            // disable lunch on dinner-only days, and anything < 2h away today
             function syncTimeOptions() {
                 const chosen = datePicker.value;
                 const timeSelect = document.getElementById('time');
@@ -369,9 +354,7 @@
                     return;
                 }
 
-                // The calendar greys out the days we cannot take, but the field
-                // can still be typed into, so refuse anything outside the
-                // window here as well rather than at the server.
+                // the field can still be typed into, so check the range here too
                 const minDate = datePicker.getAttribute('min');
                 const maxDate = datePicker.getAttribute('max');
                 if ((minDate && chosen < minDate) || (maxDate && chosen > maxDate)) {
@@ -408,8 +391,6 @@
                     timeSelect.value = '';
                 }
 
-                // A greyed-out dropdown with no reason next to it is a phone
-                // call, so say which rule is doing it.
                 if (timeHint) {
                     let message = '';
                     if (!anyAvailable) {
@@ -425,24 +406,19 @@
             }
 
             if (datePicker) {
-                // The template already carries the restaurant's own window, so
-                // only ever narrow it: a browser clock behind Sydney would
-                // otherwise reopen a day that has already passed here.
+                // only narrow the server's range, never widen it
                 const serverMin = datePicker.getAttribute('min');
                 const serverMax = datePicker.getAttribute('max');
                 const clientMax = localDate(oneMonthAhead);
                 datePicker.setAttribute('min', laterOf(serverMin, today));
                 datePicker.setAttribute('max', earlierOf(serverMax, clientMax));
                 datePicker.addEventListener('change', syncTimeOptions);
-                // A rejected submit comes back with the date already filled in,
-                // so apply the same-day rules now rather than waiting for a
-                // change event that will never fire.
+                // date is prefilled after a rejected submit
                 if (datePicker.value) {
                     syncTimeOptions();
                 }
             }
 
-            // Add form interaction animations
             const formInputs = document.querySelectorAll('input, select');
             formInputs.forEach(input => {
                 input.addEventListener('focus', function () {
@@ -466,7 +442,7 @@
                 });
             });
 
-            // Prevent duplicate submissions: disable button after first click
+            // prevent double submit
             const reservationForm = document.getElementById('reservation-form');
             const submitBtn = reservationForm.querySelector('.submit-btn');
             reservationForm.addEventListener('submit', function () {
@@ -474,8 +450,7 @@
                 submitBtn.textContent = 'Submitting...';
             });
 
-            // Coming back via the back button restores the page from cache with
-            // the button still disabled, which looks like a broken form.
+            // re-enable the button after back/forward cache restore
             window.addEventListener('pageshow', function (event) {
                 if (event.persisted) {
                     submitBtn.disabled = false;
@@ -483,9 +458,7 @@
                 }
             });
 
-            // Make a rejected submit impossible to miss: the form sits well
-            // below the fold here, so without this the page just reloads at the
-            // top and the customer never sees why it failed.
+            // scroll to the error, the form is below the fold
             const errorBox = document.getElementById('booking-error');
             if (errorBox) {
                 document.querySelectorAll('#reservation .animate-on-scroll')
@@ -502,10 +475,7 @@
                 homeSection.style.transform = `translateY(${scrolled * 0.5}px)`;
             }
 
-            // Switch nav from transparent to frosted once the hero scrolls past.
-            // Measured from the hero's real height rather than a fixed pixel
-            // value: the hero is 80vh, so a hardcoded threshold leaves the pale
-            // nav text sitting invisibly over white content on short screens.
+            // frosted nav once past the hero
             const nav = document.querySelector('.home-nav');
             if (nav) {
                 const heroHeight = homeSection ? homeSection.offsetHeight : window.innerHeight * 0.8;

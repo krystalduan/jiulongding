@@ -1,11 +1,4 @@
-"""
-Customer self-service: cancel or move a booking from the emailed link.
-
-Run with:  python3 -m pytest tests/test_manage_booking.py -v
-
-The token in the URL is the entire credential, so the security tests here
-matter as much as the behavioural ones.
-"""
+"""Customer self-service: cancel or move a booking from the emailed link."""
 import re
 import types
 from datetime import datetime, timedelta
@@ -22,11 +15,7 @@ from conftest import FakeWorksheet, days_from_now, lunch_day_from_now
 def make_booking(sheets, app_module, date=None, time='19:00', email='jane@gmail.com',
                  status='Pending', reservation_id='7', name='Jane Smith',
                  in_master=False):
-    """Put one booking in its date tab and return (token, date).
-
-    in_master also writes the Master Data row, which is what lets a link sent
-    before a date change still find the booking afterwards.
-    """
+    """Put one booking in its date tab and return (token, date)."""
     date = date or days_from_now(3)
     header = ['Name', 'Time', 'People', 'Phone', 'Email', 'Date', 'Dish Type',
               'Notes', 'Confirmed', 'Reservation ID', 'SMS Reply', 'Confirmation Method']
@@ -236,8 +225,7 @@ class TestRescheduling:
         assert client.get(f'/manage/{token}/reschedule').status_code == 405
 
     def test_a_future_booking_offers_every_slot(self, app_module):
-        # A day that serves lunch: Tuesday and Wednesday are dinner-only,
-        # so 'every slot' is not the whole list there.
+        # not Tue/Wed (dinner only)
         assert app_module.available_times_for(lunch_day_from_now(5)) == app_module.ORDERED_TIMES
 
     def test_a_past_booking_offers_nothing(self, app_module):
@@ -535,8 +523,8 @@ class TestWhichDatesAreOffered:
         assert days_from_now(app_module.MAX_RESCHEDULE_DAYS + 1) not in offered
 
     def test_the_horizon_is_measured_from_today(self, app_module):
-        """Not from the booking's own date, or a booking could walk itself
-        forward 30 days at a time."""
+        """Not from the booking's own date, or a booking could walk itself forward 30 days
+        at a time."""
         horizon = app_module.MAX_RESCHEDULE_DAYS
         for booking_in in (1, 10, horizon):
             offered = app_module.reschedule_dates(days_from_now(booking_in))

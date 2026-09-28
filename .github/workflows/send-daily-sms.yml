@@ -1,27 +1,13 @@
 name: Send day-of reservation SMS
 
-# Replaces the old in-process APScheduler, which fired once per gunicorn
-# worker (duplicate texts) and never ran at all when the Fly machine was
-# stopped. Calling the endpoint also wakes the machine.
-#
-# The texts are meant to go out at 08:30 Sydney. GitHub cron is UTC only and
-# has no daylight-saving awareness, so both Sydney offsets are scheduled:
-#   21:30 UTC = 08:30 AEDT (UTC+11, roughly Oct-Apr) / 07:30 AEST
-#   22:30 UTC = 08:30 AEST (UTC+10, roughly Apr-Oct) / 09:30 AEDT
-#
-# Only one of the two is 08:30 locally, and the endpoint is what decides which:
-# it refuses to send before 08:30 Sydney, so the early call is a no-op. Relying
-# on idempotency alone was not enough — that made whichever call came first the
-# one that sent, which meant 07:30 texts for half the year.
-#
-# The later call still reaches the endpoint inside its window, so a failed
-# 08:30 attempt is retried an hour on rather than missed for the day.
+# Day-of reminder texts at 08:30 Sydney. Cron is UTC with no DST, so it runs
+# at 21:30 and 22:30 UTC and the endpoint ignores whichever is too early.
 
 on:
   schedule:
     - cron: '30 21 * * *'
     - cron: '30 22 * * *'
-  workflow_dispatch:        # manual "send now" button in the Actions tab
+  workflow_dispatch:
 
 jobs:
   send-sms:
@@ -38,16 +24,14 @@ jobs:
 
           echo "Sydney time now: $(TZ=Australia/Sydney date '+%Y-%m-%d %H:%M %Z')"
 
-          # Pressing "Run workflow" by hand is a deliberate "send now", so it
-          # bypasses the 08:30 window. The scheduled runs never do.
+          # manual runs send straight away
           FORCE=""
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             FORCE="&force=1"
             echo "Manual run: bypassing the send window."
           fi
 
-          # Fly cold-starts the machine on first request, which can exceed a
-          # default timeout; retry a few times before giving up.
+          # retry - Fly cold starts can be slow
           for attempt in 1 2 3; do
             echo "Attempt $attempt..."
             code=$(curl -sS --max-time 120 -o response.json -w '%{http_code}' \

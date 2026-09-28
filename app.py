@@ -37,9 +37,7 @@ app.config.update(
     MAX_CONTENT_LENGTH=64 * 1024,
 )
 
-# =============================================================================
-# GOOGLE SHEETS — lazy connection
-# =============================================================================
+# --- Google Sheets ---
 
 SCOPE = ["https://spreadsheets.google.com/feeds",
          "https://www.googleapis.com/auth/drive"]
@@ -67,11 +65,8 @@ _sheets_lock = threading.Lock()
 _spreadsheet = None
 _sheet = None
 
-# Which spreadsheet to use. SPREADSHEET_KEY is the id from the sheet's URL:
-#   docs.google.com/spreadsheets/d/<THIS PART>/edit
-# Prefer it over the name — gc.open() matches by title, so two spreadsheets
-# called "Restaurant Reservations" resolve unpredictably and bookings can
-# land in the wrong one. The key is unique.
+# SPREADSHEET_KEY is the id in the sheet URL. Prefer it - opening by name is
+# ambiguous if two sheets share a title.
 SPREADSHEET_KEY = os.environ.get('SPREADSHEET_KEY', '').strip()
 SPREADSHEET_NAME = os.environ.get('SPREADSHEET_NAME', 'Restaurant Reservations').strip()
 MASTER_WORKSHEET = os.environ.get('MASTER_WORKSHEET', 'Master Data').strip()
@@ -108,17 +103,12 @@ def get_sheets():
     return _spreadsheet, _sheet
 
 
-MASTER_BOOKED_AT_COL = 10          # column J, appended after Notes
+MASTER_BOOKED_AT_COL = 10  # column J
 MASTER_BOOKED_AT_HEADER = 'Booked At'
 
 
 def _ensure_booked_at_header(sheet):
-    """Label column J once, so the new timestamp column isn't a blank header.
-
-    Only writes when the cell is genuinely empty — never overwrites an
-    existing label. Runs once per process, and any failure is swallowed:
-    a missing header must never stop a booking being saved.
-    """
+    # Only fills an empty header, and never blocks a booking if it fails.
     try:
         header = sheet.row_values(1)
         existing = header[MASTER_BOOKED_AT_COL - 1] if len(header) >= MASTER_BOOKED_AT_COL else ''
@@ -136,9 +126,7 @@ def _warmup_sheets():
     except Exception as e:
         logger.warning(f"Sheets warmup failed: {e}")
 
-# =============================================================================
-# SMS API
-# =============================================================================
+# --- SMS ---
 
 API_URL = "https://api.mobilemessage.com.au/v1/messages"
 API_USERNAME = os.environ.get('API_USERNAME')
@@ -146,27 +134,11 @@ API_PASSWORD = os.environ.get('API_PASSWORD')
 auth_string = f"{API_USERNAME}:{API_PASSWORD}"
 AUTH_HEADER = base64.b64encode(auth_string.encode()).decode()
 
-# =============================================================================
-# TIMEZONE
-# =============================================================================
-#
-# Day-of SMS used to be sent by an in-process APScheduler. That was removed:
-#   - it ran once per gunicorn worker, so every customer got a duplicate SMS;
-#   - fly.toml sets min_machines_running = 0 with auto_stop_machines, so at
-#     8:30 AM the machine is usually stopped and the job never fired at all.
-#
-# The job is now driven entirely by GitHub Actions calling
-# /api/send-sms-cron (see .github/workflows/send-daily-sms.yml), which also
-# wakes the machine. send_sms_on_date() is idempotent, so repeat calls on the
-# same day are safe.
-
 sydney_tz = timezone('Australia/Sydney')
 
 USE_RELOADER = __name__ == '__main__' and os.environ.get('FLASK_RELOAD', '1') != '0'
 
-# =============================================================================
-# HELPER FUNCTIONS
-# =============================================================================
+# --- Helpers ---
 
 def generate_reservation_id():
     _, sheet = get_sheets()
@@ -175,13 +147,7 @@ def generate_reservation_id():
 
 
 def mobile_number(phone):
-    """Normalise to 61XXXXXXXXX, or None if this is not an AU mobile.
-
-    Silent, unlike clean_phone(), because most callers are only asking a
-    question. Deciding whether the dashboard should mark a booking as textable
-    happens for every row of every day staff open, and a landline answering that
-    question with "no" is not a rejection of anything.
-    """
+    """Normalise to 61XXXXXXXXX, or None if it isn't an AU mobile."""
     if not phone:
         return None
     cleaned = re.sub(r'\D', '', str(phone))
@@ -196,15 +162,14 @@ def mobile_number(phone):
     else:
         normalised = cleaned
 
-    # AU mobiles: 61 + 4XXXXXXXX  (11 digits total)
+    # 61 + 4XXXXXXXX
     if re.fullmatch(r'614\d{8}', normalised):
         return normalised
     return None
 
 
 def clean_phone(phone):
-    """mobile_number(), for the places where a number that is not a mobile means
-    a booking that cannot be taken. Logs, because there it is a refusal."""
+    """Like mobile_number() but logs the rejection."""
     normalised = mobile_number(phone)
     if normalised:
         return normalised
@@ -213,15 +178,9 @@ def clean_phone(phone):
 
 
 def normalise_staff_phone(raw):
-    """A phone number as staff typed it, ready for the sheet.
+    """Staff can enter landlines/overseas numbers too - they just won't get texted.
 
-    clean_phone() takes AU mobiles only, because that is all the day-of SMS can
-    reach. Staff take bookings from landlines and overseas numbers as well, and
-    refusing those would mean staff could not correct a number that is simply
-    true — so they are kept, and reported back as not textable rather than
-    silently stored as if a reminder were coming.
-
-    Returns (stored_value, is_mobile, error). error is None when usable.
+    Returns (stored_value, is_mobile, error).
     """
     text = str(raw or '').strip()
     if not text:
@@ -240,23 +199,18 @@ def normalise_staff_phone(raw):
     logger.info("Staff saved a non-mobile number; this booking will not be texted")
     return digits, False, None
 
-# =============================================================================
-# RESERVATION VALIDATION
-# =============================================================================
+# --- Validation ---
 
-# Server-side mirrors of the <option> values in index.html / book.html.
-# The browser can only ever submit one of these; anything else is a bot.
+# Must match the <option> values in index.html / book.html.
 VALID_TIMES = {"12:00", "12:30", "13:00", "13:30",
                "17:00", "17:30", "18:00", "18:30",
                "19:00", "19:30", "20:00", "20:30"}
 VALID_PARTY_SIZES = {"1-2", "3-4", "5-6", "7-10", "10+"}
 VALID_DISH_TYPES = {"大火锅", "小火锅", "炒菜"}
 
-# Zero-padded HH:MM sorts correctly as text, so this is service order.
 ORDERED_TIMES = sorted(VALID_TIMES)
 
-# The kitchen opens at 5pm on Tuesday and Wednesday, so there is no lunch
-# sitting on those days. date.weekday(): Monday=0 ... Sunday=6.
+# No lunch on Tue/Wed (weekday() Monday=0).
 DINNER_ONLY_WEEKDAYS = {1, 2}
 LUNCH_TIMES = {"12:00", "12:30", "13:00", "13:30"}
 DINNER_ONLY_MESSAGE = ("We serve dinner only on Tuesdays and Wednesdays. "
@@ -265,20 +219,13 @@ DINNER_ONLY_MESSAGE_ZH = "周二、周三仅供应晚市，请选择下午 5:00 
 
 
 def times_on_date(booking_date):
-    """Service times that exist on a given date, before any notice rules.
-
-    Lunch is dropped on the two dinner-only days. Everything downstream — the
-    booking form, the customer's reschedule picker and the server-side checks
-    behind both — asks this one question, so the days the kitchen is shut are
-    described in a single place.
-    """
+    """Service times on a given date (drops lunch on dinner-only days)."""
     if booking_date.weekday() in DINNER_ONLY_WEEKDAYS:
         return [t for t in ORDERED_TIMES if t not in LUNCH_TIMES]
     return list(ORDERED_TIMES)
 
 
 def is_dinner_only(date_str):
-    """True when date_str falls on a day with no lunch sitting."""
     try:
         return (datetime.strptime(date_str, '%Y-%m-%d').date().weekday()
                 in DINNER_ONLY_WEEKDAYS)
@@ -286,32 +233,18 @@ def is_dinner_only(date_str):
         return False
 
 
-# A booking may be placed up to one calendar month ahead — the same window the
-# date picker on the form offers. A calendar month rather than a fixed number of
-# days, so "one month" lands where a customer reading the form expects it to in
-# every month of the year.
 def max_booking_date(today):
-    """The last date a new booking may be made for, one month from today.
-
-    A short target month clamps to its last day: 31 January maps to 28 February,
-    not to 3 March, which is what adding a fixed 31 days would give.
-    """
+    """One calendar month from today, clamped (31 Jan -> 28 Feb)."""
     year = today.year + (today.month == 12)
     month = today.month % 12 + 1
     return today.replace(year=year, month=month,
                          day=min(today.day, calendar.monthrange(year, month)[1]))
 
 
-# How far ahead a customer may move an existing booking, counted from the day
-# they are making the change — not from the date the booking currently holds,
-# which would let a booking walk itself forward a month at a time.
+# Counted from today, not from the booking's current date.
 MAX_RESCHEDULE_DAYS = 30
-MIN_LEAD_MINUTES = 120     # same-day bookings must be at least 2 hours out
-MIN_FILL_SECONDS = 3       # a human cannot complete the form faster than this
-# Moving a booking that is already today needs the same 2 hours of notice as
-# making a new one, so the kitchen never learns of a change inside its prep
-# window. Moving a later booking *into* today is not self-service at all —
-# see reschedule_dates().
+MIN_LEAD_MINUTES = 120     # same-day bookings need 2 hours notice
+MIN_FILL_SECONDS = 3       # faster than this is a bot
 MIN_RESCHEDULE_MINUTES = MIN_LEAD_MINUTES
 
 EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$')
@@ -320,21 +253,9 @@ NAME_RE = re.compile(r'^[^\d<>{}\[\]\\/|]+$')
 MAX_LENGTHS = {'name': 80, 'email': 120, 'notes': 300}
 
 
-# =============================================================================
-# SELF-SERVICE MANAGE LINK
-# =============================================================================
-#
-# The confirmation email carries a link to /manage/<token>. The token is the
-# whole credential, so it is signed with SECRET_KEY and carries everything
-# needed to find the booking. Nothing is stored: no extra sheet column and no
-# lookup just to validate.
-#
-# Expiry is not baked into the signature — it comes from the booking date in
-# the payload, which is itself signed and so cannot be edited. A link works
-# until the day of the booking has passed.
-#
-# Note: rotating SECRET_KEY invalidates every outstanding link. That is the
-# accepted trade for keeping this stateless.
+# --- Manage links ---
+# /manage/<token> from the confirmation email. The token is signed, stateless,
+# and valid until the booking date passes. Rotating SECRET_KEY kills all links.
 
 MANAGE_TOKEN_SALT = 'jld-manage-booking-v1'
 PUBLIC_BASE_URL = os.environ.get('PUBLIC_BASE_URL', 'https://jiulongding.au').rstrip('/')
@@ -343,7 +264,6 @@ _manage_serializer = URLSafeSerializer(app.secret_key, salt=MANAGE_TOKEN_SALT)
 
 
 def make_manage_token(reservation_id, date, email):
-    """Signed handle for one booking. Safe to put in a URL."""
     return _manage_serializer.dumps({
         'r': str(reservation_id),
         'd': str(date),
@@ -352,11 +272,7 @@ def make_manage_token(reservation_id, date, email):
 
 
 def read_manage_token(token):
-    """Returns (payload, error_code). error_code is None when the token is good.
-
-    Codes: 'invalid' (missing, tampered or signed with another key),
-           'expired' (the booking date has passed).
-    """
+    """Returns (payload, error) where error is None, 'invalid' or 'expired'."""
     try:
         payload = _manage_serializer.loads(token)
     except BadSignature:
@@ -383,11 +299,7 @@ def manage_url(reservation_id, date, email):
 
 
 def available_times_for(target_date_str):
-    """Slots a customer may move to on a given date.
-
-    Every slot for a future date; on today, only those at least
-    MIN_RESCHEDULE_MINUTES away. Past dates offer nothing.
-    """
+    """Slots a customer can move to. Today only offers slots 2+ hours out."""
     try:
         target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
     except (ValueError, TypeError):
@@ -397,8 +309,6 @@ def available_times_for(target_date_str):
     if target_date < now.date():
         return []
 
-    # Days the kitchen is shut for lunch come out first, so the notice rule
-    # below is only ever applied to slots that exist in the first place.
     allowed = times_on_date(target_date)
     if target_date > now.date():
         return allowed
@@ -413,14 +323,7 @@ def available_times_for(target_date_str):
 
 
 def reschedule_dates(current_date_str):
-    """Dates a customer may move this booking to.
-
-    Today is only ever offered to a booking that is *already* today. A booking
-    for tomorrow or later cannot be pulled forward into today online: that is a
-    same-day change to the kitchen's numbers, so it goes through the phone.
-    Moving out of today to a later date is always fine — it frees a table
-    rather than adding one.
-    """
+    """Dates a customer can move to. Moving *into* today has to be done by phone."""
     try:
         current_date = datetime.strptime(current_date_str, '%Y-%m-%d').date()
     except (ValueError, TypeError):
@@ -430,8 +333,6 @@ def reschedule_dates(current_date_str):
     if current_date < today:
         return []
 
-    # Only a booking already on today keeps today as an option, and then only
-    # while a slot far enough out remains.
     first = today if (current_date == today and available_times_for(str(today))) \
         else today + timedelta(days=1)
 
@@ -440,7 +341,7 @@ def reschedule_dates(current_date_str):
 
 
 def describe_date(date_str):
-    """'2026-08-13' -> 'Thursday, 13 August 2026', for the picker and emails."""
+    """'2026-08-13' -> 'Thursday, 13 August 2026'"""
     try:
         return datetime.strptime(date_str, '%Y-%m-%d').strftime('%A, %d %B %Y')
     except (ValueError, TypeError):
@@ -459,9 +360,7 @@ def describe_date_zh(date_str):
     return f'{d.year}年{d.month}月{d.day}日 {WEEKDAYS_ZH[d.weekday()]}'
 
 
-# The sheet stores the dish type in Chinese, because that is what the booking
-# form submits and what the kitchen reads. An English reader needs it back in
-# English rather than a character they cannot place.
+# Dish type is stored in Chinese in the sheet.
 DISH_TYPE_EN = {
     '大火锅': 'Shared Hotpot',
     '小火锅': 'Individual Hotpot',
@@ -470,23 +369,17 @@ DISH_TYPE_EN = {
 
 
 def dish_in_english(value):
-    """Chinese dish type as stored -> English. Unknown values pass through."""
     return DISH_TYPE_EN.get(str(value or '').strip(), value)
 
 
 def dish_bilingual(value):
-    """'大火锅' -> '大火锅 · Shared Hotpot'.
-
-    For the confirmation email and the page it links from, which have no
-    language switch: the guest chose the dish in Chinese, so that stays, with
-    the English alongside it rather than in place of it.
-    """
+    """'大火锅' -> '大火锅 · Shared Hotpot'"""
     english = dish_in_english(value)
     return f'{value} · {english}' if english and english != value else (value or '')
 
 
 def sanitize_for_sheet(value):
-    """Neutralise spreadsheet formula injection (=IMPORTXML(...), @, +, -)."""
+    """Stop formula injection (=, +, @, -) in the sheet."""
     text = str(value or '').replace('\x00', '').strip()
     if text and text[0] in ('=', '+', '@', '\t', '\r'):
         return "'" + text
@@ -496,7 +389,7 @@ def sanitize_for_sheet(value):
 
 
 def validate_reservation(form):
-    """Returns (data, error_message). data is None when validation fails."""
+    """Returns (data, error_message)."""
     name = (form.get("name") or "").strip()
     email = (form.get("email") or "").strip()
     people = (form.get("people") or "").strip()
@@ -563,16 +456,13 @@ def validate_reservation(form):
         'notes': sanitize_for_sheet(notes),
     }, None
 
-# =============================================================================
-# RATE LIMITING (in-memory, per worker process)
-# =============================================================================
+# --- Rate limiting (in memory, per process) ---
 
 _rate_lock = threading.Lock()
 _rate_hits = {}
 
 
 def secure_equals(a, b):
-    """Timing-safe comparison that tolerates non-ASCII secrets."""
     return secrets.compare_digest(str(a or '').encode('utf-8'), str(b or '').encode('utf-8'))
 
 
@@ -584,13 +474,12 @@ def client_ip():
 
 
 def rate_limited(bucket, limit, window_seconds):
-    """True if this client has exceeded `limit` requests in `window_seconds`."""
     key = f"{bucket}:{client_ip()}"
     now = datetime.now().timestamp()
     cutoff = now - window_seconds
     with _rate_lock:
         hits = [t for t in _rate_hits.get(key, []) if t > cutoff]
-        # opportunistic cleanup so the dict cannot grow without bound
+        # stop the dict growing forever
         if len(_rate_hits) > 5000:
             for k in [k for k, v in _rate_hits.items() if not v or max(v) < cutoff]:
                 _rate_hits.pop(k, None)
@@ -605,27 +494,16 @@ def rate_limited(bucket, limit, window_seconds):
 RESTAURANT_PHONE = '+61 423 987 048'
 RESTAURANT_ADDRESS = '71 Dixon Street (up the stairs), Haymarket, Sydney NSW 2000'
 
-# Where the email should fetch fonts and other assets from. Emails are read
-# long after they are sent and from anywhere, so this is the live site even
-# when the mail was generated on a laptop.
+# Emails always load assets from the live site.
 ASSET_BASE_URL = os.environ.get('ASSET_BASE_URL', 'https://jiulongding.au').rstrip('/')
 
-# The same two stacks the site uses, so a booking looks the same in the inbox
-# as on the page. Both are old-style serifs for a 复古 feel: Garamond for
-# English, and a Song/Ming face for Chinese — the traditional typeface of
-# printed Chinese text.
-#
-# The named webfonts come first and are declared in EMAIL_FONT_FACES below.
-# Gmail and Outlook ignore @font-face, so everything after them is a stack of
-# faces already installed on the reader's machine: those clients simply land
-# one step down rather than on a default sans.
+# Same fonts as the site. Gmail/Outlook ignore @font-face, so the rest of
+# each stack is system fallbacks.
 EMAIL_FONT = ("'EB Garamond', Garamond, 'Hoefler Text', 'Palatino Linotype', "
               "Palatino, 'Book Antiqua', Georgia, 'Times New Roman', serif")
 EMAIL_FONT_CN = ("'Songti SC', STSong, 'Noto Serif SC', 'Source Han Serif SC', "
                  "SimSun, 'Songti TC', STKaiti, KaiTi, 'PingFang SC', serif")
-# The masthead face, matching the page. Its unicode-range covers exactly
-# 九龙鼎重庆火锅, so any other character falls through to the Song stack on its
-# own — the same behaviour as the stylesheet.
+# Masthead font, subset to 九龙鼎重庆火锅 only.
 EMAIL_FONT_BRAND = "'chineseFont', " + EMAIL_FONT_CN
 
 EMAIL_FONT_FACES = f"""
@@ -653,12 +531,7 @@ def format_phone_display(phone):
 
 
 def _email_rows_html(rows):
-    """The detail table shared by both emails.
-
-    Each row is (english label, chinese label, value) or a 4th entry with the
-    value it is replacing. A replaced value is struck through in grey above the
-    new one, so a guest can see at a glance what actually moved.
-    """
+    """Rows are (label, zh label, value[, old value]). Old values get struck through."""
     out = []
     for row in rows:
         label, zh, value = row[0], row[1], row[2]
@@ -686,12 +559,7 @@ def _email_rows_html(rows):
 
 
 def _email_button_html(href, label_en, label_zh, note_en='', note_zh=''):
-    """The one button style these emails use. Empty href renders nothing.
-
-    Table-wrapped anchor rather than a padded <a>: Outlook renders mail with
-    Word, which drops padding on inline elements, so a plain styled link
-    collapses to bare text there.
-    """
+    # Wrapped in a table because Outlook drops padding on a plain <a>.
     if not href:
         return ''
 
@@ -717,7 +585,6 @@ def _email_button_html(href, label_en, label_zh, note_en='', note_zh=''):
 
 
 def _email_manage_button_html(manage_link):
-    """The self-service button carried by the booking and change emails."""
     return _email_button_html(
         manage_link, 'Change or cancel your booking', '更改或取消预订',
         "Same-day changes need at least 2 hours' notice.",
@@ -726,10 +593,7 @@ def _email_manage_button_html(manage_link):
 
 def _email_document(subject, preheader, intro_html, row_html,
                     manage_button_html, note_html):
-    """The card every email from us is built in: masthead, details, address.
-
-    Both builders go through here so the two mails cannot drift apart.
-    """
+    """Shared layout for every booking email."""
     return f"""<!doctype html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -747,12 +611,7 @@ def _email_document(subject, preheader, intro_html, row_html,
                     border:1px solid #eee2d8;">
 
         <tr><td align="center" style="background:#8B1A1A;padding:30px 32px 26px;">
-          <!-- The name is set in the masthead calligraphy face, as an image:
-               Gmail drops @font-face outright, so the webfont the site uses
-               could never reach most readers. Drawn from the same TTF the
-               subset webfont is cut from, at 2x, on the header's own red so a
-               client's dark mode cannot invert around it. Blocked images fall
-               back to the alt text, styled below to match. -->
+          <!-- Image, since Gmail won't load the webfont. -->
           <img src="{ASSET_BASE_URL}/static/img/email-brand-zh.png" alt="九龙鼎重庆火锅"
                width="257" height="44"
                style="display:block;margin:0 auto;border:0;outline:none;text-decoration:none;
@@ -812,16 +671,14 @@ def _email_document(subject, preheader, intro_html, row_html,
 
 
 def _booking_email_parts(customer_name, d):
-    """The values both emails present, formatted once."""
     try:
         date_obj = datetime.strptime(d['date'], '%Y-%m-%d')
-        formatted_date = date_obj.strftime('%A, %d %B %Y')   # in the email body
-        subject_date = date_obj.strftime('%d/%m/%Y')         # in the subject line
+        formatted_date = date_obj.strftime('%A, %d %B %Y')
+        subject_date = date_obj.strftime('%d/%m/%Y')
     except Exception:
         formatted_date = subject_date = d['date']
 
-    # Self-service link. Only produced when we know which booking this is —
-    # a resend without a reservation id simply omits the button.
+    # No reservation id -> no manage button.
     manage_link = ''
     if d.get('reservation_id'):
         try:
@@ -833,8 +690,6 @@ def _booking_email_parts(customer_name, d):
         'formatted_date': formatted_date,
         'subject_date': subject_date,
         'phone': format_phone_display(d.get('phone')),
-        # Chinese as chosen, with the English gloss beside it — an email has no
-        # language switch, so it has to carry both.
         'dish': dish_bilingual(d.get('dish_type')) or 'Not specified',
         'people': d.get('people', ''),
         'manage_link': manage_link,
@@ -854,7 +709,6 @@ def _hold_note_html(manage_link, lead_en, lead_zh):
 
 
 def _manage_text(manage_link):
-    """The self-service block for the plain-text half of either email."""
     if manage_link:
         return (f"\nCHANGE OR CANCEL 更改或取消\n  {manage_link}\n"
                 "  (same-day changes need at least 2 hours' notice)\n"
@@ -883,7 +737,6 @@ JiuLongDing Chongqing Hotpot (九龙鼎重庆火锅)
 
 
 def build_confirmation_email(customer_name, d):
-    """Returns (subject, html_body, text_body) for a reservation confirmation."""
     parts = _booking_email_parts(customer_name, d)
     manage_link = parts['manage_link']
     subject = f"Your reservation at JiuLongDing Hotpot | {parts['subject_date']}"
@@ -918,23 +771,12 @@ def build_confirmation_email(customer_name, d):
 
 
 def build_change_email(customer_name, d, previous):
-    """Confirmation that a booking moved. `previous` holds what it moved from.
-
-    Same card as the original confirmation, with the replaced date or time
-    struck through above the new one so the change is legible at a glance.
-    """
+    """`previous` holds the old values, shown struck through."""
     parts = _booking_email_parts(customer_name, d)
     manage_link = parts['manage_link']
     subject = f"Your reservation has been updated | {parts['subject_date']}"
 
     def replaced(key, now_value, render=lambda v: v):
-        """What this field used to be, or None if it did not change.
-
-        Staff can change the party size and the phone number as well as the
-        date, so every field the card shows has to be able to carry its own
-        strike-through. Showing a new party size with nothing struck out beside
-        it reads as though we had it wrong all along.
-        """
         was = previous.get(key) or ''
         return render(was) if was and str(was) != str(now_value) else None
 
@@ -983,13 +825,6 @@ def build_change_email(customer_name, d, previous):
 
 
 def build_cancellation_email(customer_name, d):
-    """Returns (subject, html_body, text_body) confirming a cancellation.
-
-    No strike-through here, unlike the change email: there is no replacement
-    value, and reusing that styling for "gone" rather than "replaced" would
-    read as a second meaning for the same mark. The booking is stated plainly
-    under a heading that says it is cancelled.
-    """
     parts = _booking_email_parts(customer_name, d)
     subject = f"Your reservation has been cancelled | {parts['subject_date']}"
 
@@ -1027,7 +862,6 @@ def build_cancellation_email(customer_name, d):
         preheader=(f"Cancelled: {parts['formatted_date']} at {d['time']}."),
         intro_html=intro_html,
         row_html=_email_rows_html(rows),
-        # The manage link is useless now, so the way back is a fresh booking.
         manage_button_html=_email_button_html(
             f'{PUBLIC_BASE_URL}/book', 'Make a new booking', '重新预订'),
         note_html=note_html,
@@ -1042,11 +876,7 @@ def build_cancellation_email(customer_name, d):
 
 def send_confirmation_email(customer_email, customer_name, reservation_details,
                             previous=None, kind=None):
-    """Send a booking email.
-
-    kind='cancelled' sends the cancellation; otherwise `previous` selects the
-    change confirmation and its absence the original booking confirmation.
-    """
+    """kind='cancelled' -> cancellation, previous set -> change, else confirmation."""
     try:
         logger.info(f"Sending email to {customer_email}")
         if kind == 'cancelled':
@@ -1065,8 +895,6 @@ def send_confirmation_email(customer_email, customer_name, reservation_details,
             json={
                 "from": "JiuLongDing Hotpot <reservations@jiulongding.au>",
                 "to": [customer_email],
-                # A real reply-to is a positive signal and lets guests actually
-                # reach the restaurant instead of a dead no-reply address.
                 "reply_to": os.environ.get('REPLY_TO_EMAIL', 'reservations@jiulongding.au'),
                 "subject": subject,
                 "html": html_body,
@@ -1102,11 +930,6 @@ DATE_TAB_HEADERS = ["Name", "Time", "People", "Phone", "Email", "Date",
 
 
 def get_or_create_date_sheet(spreadsheet, date):
-    """The tab for one date, created with headers if it does not exist yet.
-
-    Shared by new bookings and by a customer moving an existing booking to a
-    date nobody has booked yet.
-    """
     sheet_name = str(date).replace('/', '-')
     try:
         return spreadsheet.worksheet(sheet_name)
@@ -1177,10 +1000,8 @@ def send_sms_on_date(target_date, message_type="day_of"):
         no_mobile_count = 0
         batch_updates = []
 
-        # Idempotency marker written into column K. It carries the send date,
-        # so calling this twice in one day is a no-op while tomorrow's run
-        # still goes ahead. Without this, nothing stops a duplicate SMS: the
-        # loop keys off column I ("Pending"), which sending does not change.
+        # Column K gets a dated "sent" marker so re-running on the same day
+        # doesn't text anyone twice.
         now = datetime.now(sydney_tz)
         today_stamp = now.strftime('%d/%m/%y')
         sent_marker_prefix = f"{message_type} sent {today_stamp}"
@@ -1195,18 +1016,14 @@ def send_sms_on_date(target_date, message_type="day_of"):
             if confirmed != "Pending":
                 continue
 
-            # Staff can save a landline or an overseas number for a booking taken
-            # over the phone, so "has a number" is not the same as "can be
-            # texted". Handing one of those to the SMS API spends a message on a
-            # send that cannot arrive, so the check is what the number actually
-            # is, not whether the cell is filled.
+            # Landlines / overseas numbers can't be texted.
             mobile = mobile_number(phone)
             if not mobile:
                 no_mobile_count += 1
                 logger.info(f"Row {i}: no mobile number, cannot send {message_type}")
                 continue
 
-            # A previous failure is left to retry; only a success blocks a resend.
+            # Only a success blocks a resend - failures retry.
             if sent_marker_prefix in sms_note:
                 skipped_count += 1
                 logger.info(f"Row {i}: {message_type} already sent today, skipping")
@@ -1232,9 +1049,6 @@ def send_sms_on_date(target_date, message_type="day_of"):
 
         if batch_updates:
             date_sheet.batch_update(batch_updates)
-        # The two kinds of skip are counted apart: "already texted" is the job
-        # working, while a booking with no mobile is one that will sit at Pending
-        # until somebody rings it, and reporting them as one number hid that.
         summary = (f"SMS Summary for {target_date}: {sent_count} sent, "
                    f"{failed_count} failed, {skipped_count} already sent today")
         if no_mobile_count:
@@ -1244,22 +1058,9 @@ def send_sms_on_date(target_date, message_type="day_of"):
     except Exception as e:
         return f"Error sending SMS for {target_date}: {e}"
 
-# =============================================================================
-# CRON ENDPOINT
-# =============================================================================
-
-# The day-of texts go out at 8:30 AM Sydney.
-#
-# GitHub Actions cron is UTC only and has no daylight-saving awareness, so the
-# workflow fires at both 21:30 and 22:30 UTC. Exactly one of those is 08:30 in
-# Sydney and which one it is changes with DST. Nothing previously chose between
-# them: whichever came first simply sent, so for the half of the year Sydney is
-# on AEST the texts went out at 07:30.
-#
-# The window runs forward from the target rather than either side of it, so the
-# early call is always refused while the later one still lands. Its length
-# leaves room for a retry after a failed first attempt — safe because
-# send_sms_on_date() will not text the same booking twice in one day.
+# --- Cron ---
+# Day-of texts go out at 8:30 Sydney, triggered by GitHub Actions. The workflow
+# fires at 21:30 and 22:30 UTC to cover DST, and this window drops the early one.
 SMS_SEND_HOUR = 8
 SMS_SEND_MINUTE = 30
 SMS_SEND_WINDOW_MINUTES = 90
@@ -1282,9 +1083,7 @@ def send_sms_cron():
     now = datetime.now(sydney_tz)
     is_open, delta = sms_window_state(now)
 
-    # force=1 is the manual "send now": the workflow_dispatch button, or staff
-    # running it by hand. Those are deliberate, so they are not held to the
-    # schedule — only the unattended cron is.
+    # force=1 = manual run, skips the time window
     if not is_open and request.args.get('force') != '1':
         logger.info(
             f"Cron SMS job skipped: {now.strftime('%H:%M')} Sydney is {delta:+d} min "
@@ -1300,9 +1099,7 @@ def send_sms_cron():
     return jsonify({'status': 'ok', 'result': result,
                     'sydney_time': now.strftime('%Y-%m-%d %H:%M')})
 
-# =============================================================================
-# SEO ROUTES
-# =============================================================================
+# --- SEO ---
 
 @app.before_request
 def redirect_old_domain():
@@ -1313,14 +1110,12 @@ def redirect_old_domain():
 
 @app.after_request
 def allow_cross_origin_fonts(response):
-    """Let the confirmation emails use the site's own webfonts.
-
-    A font fetched from another origin needs CORS, and an email is always
-    another origin — without this header the mail clients that do honour
-    @font-face still drop EB Garamond and fall back to Georgia.
-    """
+    # CORS so emails can load the webfonts.
     if request.path.startswith('/static/fonts/'):
         response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    elif request.path.startswith(('/static/photos/', '/static/img/')):
+        response.headers['Cache-Control'] = 'public, max-age=604800'
     return response
 
 
@@ -1346,13 +1141,9 @@ def sitemap():
 </urlset>'''
     return xml, 200, {'Content-Type': 'application/xml'}
 
-# =============================================================================
-# CUSTOMER-FACING ROUTES
-# =============================================================================
+# --- Customer routes ---
 
-# A customer can legitimately have more than one booking page open — a tab on
-# / and another on /book, or a page reopened from history. Tracking a single
-# token meant the most recent page load silently invalidated every other one.
+# Several tokens so multiple open booking tabs all still work.
 MAX_OPEN_FORMS = 6
 MAX_REMEMBERED_SUBMISSIONS = 6
 
@@ -1368,13 +1159,7 @@ def issue_form_token():
 
 
 def consume_form_token(submitted):
-    """Claim a one-time form token.
-
-    Returns (status, issued_at) where status is one of:
-      'ok'        valid and unused; it is now spent
-      'duplicate' already used — a refresh or back-button resubmit
-      'unknown'   never issued to this session, or the session has expired
-    """
+    """Returns (status, issued_at). status is 'ok', 'duplicate' or 'unknown'."""
     if not submitted:
         return 'unknown', None
 
@@ -1397,12 +1182,7 @@ def consume_form_token(submitted):
 
 @app.context_processor
 def booking_window():
-    """The bookable date range, for the `min`/`max` on every date picker.
-
-    Rendered into the HTML rather than left to JavaScript so the native
-    calendar greys out the days we cannot take before a single script runs —
-    and so the range is the restaurant's Sydney day, not the browser's.
-    """
+    # min/max for the date pickers, in Sydney time.
     today = datetime.now(sydney_tz).date()
     return {'min_date': str(today), 'max_date': str(max_booking_date(today))}
 
@@ -1420,14 +1200,10 @@ def book():
 
 
 def reservation_error(message, status=400):
-    """Re-render the booking form with the customer's answers still in it.
-
-    Losing all eight fields to one mistyped digit was the quickest way to lose
-    a booking, so everything except the honeypot comes back with the page.
-    """
+    """Re-render the form with the customer's answers kept."""
     source = request.form.get('form_source')
     if source not in ('index', 'book'):
-        # Pages cached before form_source existed still fall back to the referrer.
+        # older cached pages don't send form_source
         source = 'book' if (request.referrer or '').rstrip('/').endswith('/book') else 'index'
     template = 'book.html' if source == 'book' else 'index.html'
     values = {field: request.form.get(field, '') for field in FORM_FIELDS}
@@ -1439,8 +1215,7 @@ def reservation_error(message, status=400):
 def submit_reservation_route():
     logger.info("Reservation form submitted")
 
-    # Generous on attempts (people fat-finger their phone number), strict on
-    # bookings that actually get written.
+    # Loose on attempts, strict on actual bookings.
     if rate_limited('reservation_attempt', limit=20, window_seconds=3600):
         logger.warning(f"Reservation attempt rate limit hit for {client_ip()}")
         return reservation_error(
@@ -1449,21 +1224,18 @@ def submit_reservation_route():
     token_status, issued_at = consume_form_token(request.form.get('form_token'))
 
     if token_status == 'duplicate':
-        # A refresh or back-button resubmit of a booking we already saved.
-        # Show them the confirmation again rather than taking the order twice.
+        # refresh / back-button resubmit
         logger.info("Duplicate submission ignored; returning customer to their confirmation")
         return redirect(url_for('reservation_success'))
 
     if token_status == 'unknown':
-        # Expired session, cleared cookies, or a page that has been open for
-        # days. Previously this dropped the customer on the homepage with no
-        # message and no booking.
+        # expired session or a very old page
         logger.warning(f"Unrecognised form token from {client_ip()}")
         return reservation_error(
             "Your booking page had been open for a while, so we couldn't confirm the submission. "
             "Your details are still below — please press Submit once more.")
 
-    # Honeypot: hidden from real users, irresistible to form-filling bots.
+    # Honeypot field - only bots fill it in.
     if request.form.get('website'):
         logger.warning(f"Honeypot triggered from {client_ip()} - discarding submission")
         return reservation_error(
@@ -1486,8 +1258,6 @@ def submit_reservation_route():
 
     _, sheet = get_sheets()
     reservation_id = generate_reservation_id()
-    # Column J: when the booking was submitted (Sydney time), so staff can tell
-    # a booking made this morning from one made three weeks ago.
     booked_at = datetime.now(sydney_tz).strftime('%d/%m/%y %H:%M')
     sheet.append_row([reservation_id, data['name'], data['date'], data['time'], data['people'],
                       data['dish_type'], data['phone'], data['email'], data['notes'],
@@ -1506,17 +1276,11 @@ def submit_reservation_route():
 
 @app.route("/reservation_success")
 def reservation_success():
-    # Deliberately not popped: refreshing the confirmation, or resubmitting an
-    # already-saved booking, should show the details again instead of bouncing
-    # the customer to the homepage. The next booking overwrites it.
+    # Not popped, so refreshing still shows the booking.
     reservation_data = session.get('last_reservation')
     if not reservation_data:
         return redirect('/')
-    # Same self-service link the confirmation email carries. Safe to put here
-    # because this page is only ever rendered for the session that made the
-    # booking — see the redirect above — so it is shown to the person who
-    # already knows every detail on it. The page is noindex/no-referrer for
-    # the same reason the manage page is.
+    # Only this session sees the page, so showing the manage link is fine.
     manage_token = None
     if reservation_data.get('reservation_id'):
         try:
@@ -1526,8 +1290,6 @@ def reservation_success():
         except Exception:
             logger.exception("Could not build manage link for the success page")
 
-    # The session holds the raw submitted values: an ISO date and a Chinese
-    # dish type. Both need a readable form in each language.
     return render_template(
         'reservation_success.html',
         date_en=describe_date(reservation_data.get('date')),
@@ -1537,40 +1299,27 @@ def reservation_success():
         manage_token=manage_token,
         **reservation_data)
 
-# =============================================================================
-# CUSTOMER SELF-SERVICE — cancel or move a booking
-# =============================================================================
-#
-# The emailed link is GET-only and never changes anything. Both mutations are
-# POST, because corporate mail scanners and some clients pre-fetch every URL
-# in a message: a one-click GET /cancel would be silently triggered by a spam
-# filter and cancel real bookings.
+# --- Manage booking (cancel / reschedule) ---
+# Changes are POST only - mail scanners prefetch GET links.
 
-# Column positions in a date tab (0-based), per DATE_TAB_HEADERS.
+# Date tab columns (0-based), see DATE_TAB_HEADERS.
 COL_NAME, COL_TIME, COL_PEOPLE, COL_PHONE, COL_EMAIL = 0, 1, 2, 3, 4
 COL_DATE, COL_DISH, COL_NOTES, COL_CONFIRMED, COL_RES_ID = 5, 6, 7, 8, 9
-COL_SMS = 10                          # column K
-COL_METHOD = 11                       # column L
+COL_SMS = 10     # K
+COL_METHOD = 11  # L
 CANCELLED_STATUS = 'Cancelled'
-# Left behind in the old date's tab when a customer moves to another day, so
-# staff can see the booking was here and where it went, instead of a row that
-# silently disappears overnight.
+# Left on the old date's row when a booking moves to another day.
 MODIFIED_STATUS = 'Modified'
-# Statuses that are a record of something that is no longer happening. They
-# sort below the live bookings and are never texted.
+# Not live anymore - sorted last and never texted.
 FINISHED_STATUSES = {CANCELLED_STATUS.lower(), MODIFIED_STATUS.lower(), 'no'}
 
-# Column positions in Master Data (0-based), per submit_reservation_route().
+# Master Data columns (0-based).
 MASTER_ID, MASTER_DATE, MASTER_TIME, MASTER_EMAIL = 0, 2, 3, 7
 MASTER_PEOPLE, MASTER_PHONE = 4, 6
 
 
 def _scan_tab(date_sheet, want_id, want_email):
-    """Find one booking's row inside an already-opened date tab.
-
-    Rows marked Modified are skipped: they are the record of a booking that
-    used to be on this date, and the live row is in another tab.
-    """
+    """Find a booking's row in a date tab, skipping Modified rows."""
     for i, row in enumerate(date_sheet.get_all_values()[1:], start=2):
         if len(row) <= COL_RES_ID:
             continue
@@ -1578,8 +1327,7 @@ def _scan_tab(date_sheet, want_id, want_email):
             continue
         if str(row[COL_CONFIRMED]).strip().lower() == MODIFIED_STATUS.lower():
             continue
-        # Second check: ids come from a row count, so an edited sheet could in
-        # principle reuse one. The email must match the signed token too.
+        # ids come from a row count and could be reused, so check email too
         if want_email and str(row[COL_EMAIL]).strip().lower() != want_email:
             logger.warning(f"Manage link: id {want_id} found but email mismatch")
             continue
@@ -1588,11 +1336,7 @@ def _scan_tab(date_sheet, want_id, want_email):
 
 
 def master_date_for(want_id, want_email):
-    """Where Master Data says this booking now sits, or None.
-
-    Master Data is the only index from reservation id to date, so it is what
-    lets a link emailed before a date change still find the booking after it.
-    """
+    """Current date for a booking according to Master Data."""
     try:
         _, master = get_sheets()
         for row in master.get_all_values()[1:]:
@@ -1609,14 +1353,9 @@ def master_date_for(want_id, want_email):
 
 
 def find_booking(payload):
-    """Locate a booking's row in its date tab.
+    """Returns (date_sheet, row_number, row), or Nones.
 
-    Returns (date_sheet, row_number, row) or (None, None, None).
-
-    The token carries the date the booking had when the link was sent. If the
-    customer has since moved it, that tab no longer holds the row, so fall back
-    to Master Data for its current date — otherwise every link already sitting
-    in an inbox would break the moment someone changed their date.
+    Falls back to Master Data if the booking moved since the link was sent.
     """
     spreadsheet, _ = get_sheets()
     want_id = str(payload['r']).strip()
@@ -1635,10 +1374,7 @@ def find_booking(payload):
             return None, None, None
         return date_sheet, row_number, row
 
-    # The date in the token is right for every booking that has not moved, which
-    # is nearly all of them. Master Data is the whole booking history and grows
-    # forever, so reading it up front made the common case pay for the rare one
-    # on a page the customer is waiting on.
+    # Try the token's date first - Master Data is big and rarely needed.
     found = look_in(tried)
     if found[1] is not None:
         return found
@@ -1653,16 +1389,7 @@ def find_booking(payload):
 
 def update_master_booking(want_id, want_email, new_date, new_time,
                           new_people=None, new_phone=None):
-    """Keep Master Data in step with a change.
-
-    Date and time always; party size and phone only when given, which is how a
-    staff edit keeps the master list from drifting out of agreement with the
-    date tabs it indexes.
-
-    Best-effort: a booking that has been changed but whose index is stale is
-    still a booking the customer can reach through the new link, so a failure
-    here must not fail their change.
-    """
+    """Sync a change into Master Data. Best effort - never fails the change."""
     try:
         _, master = get_sheets()
         for i, row in enumerate(master.get_all_values()[1:], start=2):
@@ -1688,24 +1415,15 @@ def update_master_booking(want_id, want_email, new_date, new_time,
 
 
 def move_booking_row(spreadsheet, old_sheet, row_number, row, new_date, new_time, note):
-    """Move a booking into the tab for new_date, returning the new tab.
+    """Copy the booking to new_date's tab and mark the old row Modified.
 
-    The old row is kept and marked Modified rather than deleted, so a table
-    that was on the books for this date leaves a trace: staff opening the day
-    can see the booking moved and where it went. The live row is the new one.
-
-    Written in that order on purpose — the destination row exists before the
-    old one is marked, so a failure between the two leaves a booking that is
-    still visibly live on its original date rather than one that is nowhere.
+    New row is written first so a failure never loses the booking.
     """
     moved = list(row) + [''] * max(0, len(DATE_TAB_HEADERS) - len(row))
     moved[COL_TIME] = new_time
     moved[COL_DATE] = new_date
     moved[COL_METHOD] = note
-    # Column K is the reminder history for the date this booking used to be on:
-    # which text went out that morning, and what the customer replied to it.
-    # None of that is true of the new date, and carrying it across left staff
-    # reading a booking weeks out as though it had already been texted.
+    # SMS history belongs to the old date
     moved[COL_SMS] = ''
 
     target = get_or_create_date_sheet(spreadsheet, new_date)
@@ -1719,7 +1437,6 @@ def move_booking_row(spreadsheet, old_sheet, row_number, row, new_date, new_time
 
 
 def booking_view(row):
-    """Template-friendly view of a date-tab row."""
     def cell(index):
         return row[index] if len(row) > index else ''
 
@@ -1728,7 +1445,6 @@ def booking_view(row):
         'time': cell(COL_TIME),
         'people': cell(COL_PEOPLE),
         'phone': format_phone_display(cell(COL_PHONE)),
-        # Stored in Chinese; the page shows whichever half the reader asked for.
         'dish_type': cell(COL_DISH),
         'dish_type_en': dish_in_english(cell(COL_DISH)),
         'date_raw': cell(COL_DATE),
@@ -1747,8 +1463,7 @@ def render_manage(state, token=None, booking=None, times=None, dates=None,
         token=token,
         booking=booking,
         times=times or [],
-        # (value, English label, Chinese label) — a <select> can only hold one
-        # label per option, so the page swaps them when the language changes.
+        # (value, en label, zh label)
         dates=[(d, describe_date(d), describe_date_zh(d)) for d in (dates or [])],
         selected_date=selected_date,
         today=str(datetime.now(sydney_tz).date()),
@@ -1758,13 +1473,10 @@ def render_manage(state, token=None, booking=None, times=None, dates=None,
 
 
 def render_active(token, booking, notice=None, on_date=None, status_code=200):
-    """The editable page, with the pickers built for whichever date is shown."""
     dates = reschedule_dates(booking['date_raw'])
     shown = on_date or booking['date_raw']
 
-    # Late in the evening a booking for today has no slot left today, but it can
-    # still be moved to a later day. Show the first date it *can* move to rather
-    # than an empty time list, which would read as "no changes possible".
+    # No slots left today -> show the next date that has some.
     if not available_times_for(shown) and dates:
         shown = dates[0]
 
@@ -1776,11 +1488,7 @@ def render_active(token, booking, notice=None, on_date=None, status_code=200):
 
 
 def load_managed_booking(token):
-    """Shared front door for all three routes.
-
-    Returns (payload, date_sheet, row_number, row, error_response). When
-    error_response is not None the caller should return it unchanged.
-    """
+    """Returns (payload, date_sheet, row_number, row, error_response)."""
     payload, error = read_manage_token(token)
     if error == 'expired':
         return None, None, None, None, render_manage('expired', status_code=410)
@@ -1809,17 +1517,13 @@ def manage_booking(token):
     if booking['status'].strip().lower().startswith('cancelled'):
         return render_manage('cancelled', token=token, booking=booking)
 
-    # A move redirects here rather than rendering in place, so the address bar
-    # ends up holding a link that still works. The details below are re-read
-    # from the sheet, so this message only appears over a change that landed.
     notice = None
     if request.args.get('moved'):
         notice = ('success',
                   f"Your booking has been moved to {booking['date']} at {booking['time']}.",
                   f"您的预订已改为 {booking['date_raw']} {booking['time']}。")
 
-    # ?on=<date> previews another day's slots, so picking a date can refresh the
-    # time list. Only dates the customer may actually move to are honoured.
+    # ?on=<date> shows that day's slots
     wanted = (request.args.get('on') or '').strip()
     on_date = wanted if wanted in reschedule_dates(booking['date_raw']) else None
 
@@ -1854,9 +1558,6 @@ def manage_booking_cancel(token):
 
     logger.info(f"Booking {booking['reservation_id']} cancelled by customer")
 
-    # In writing, so the guest has a record that it actually went through.
-    # Background, for the same reason as the other two: the page they are about
-    # to see must not wait on Resend, or fail with it.
     guest_email = str(payload.get('e') or '')
     if guest_email:
         threading.Thread(target=send_email_async, args=(
@@ -1868,7 +1569,7 @@ def manage_booking_cancel(token):
             None, 'cancelled',
         )).start()
 
-    # Marking column I stops the 8:30 reminder: that job only texts "Pending".
+    # Not Pending anymore, so no reminder text.
     booking['status'] = CANCELLED_STATUS
     return render_manage('cancelled', token=token, booking=booking)
 
@@ -1888,8 +1589,7 @@ def manage_booking_reschedule(token):
 
     old_date, old_time = booking['date_raw'], booking['time']
     new_time = (request.form.get('time') or '').strip()
-    # No date field at all means an older cached copy of the form: treat it as
-    # a time-only change rather than rejecting the customer.
+    # older cached forms have no date field
     new_date = (request.form.get('date') or old_date).strip()
 
     def reject(message, zh, on_date=None):
@@ -1914,8 +1614,7 @@ def manage_booking_reschedule(token):
         return reject(f'Bookings can only be moved up to {MAX_RESCHEDULE_DAYS} days ahead.',
                       f'预订最多只能改到 {MAX_RESCHEDULE_DAYS} 天内。')
 
-    # Pulling a later booking forward into today is a same-day change to the
-    # kitchen's numbers, so it is not self-service.
+    # Moving into today has to go through the phone.
     if target == today and current != today:
         return reject('To move a booking to today, please call us on '
                       f'{RESTAURANT_PHONE} so we can check we have room.',
@@ -1926,8 +1625,6 @@ def manage_booking_reschedule(token):
 
     times = available_times_for(new_date)
     if new_time not in times:
-        # Checked before the notice rules so a lunch slot on a Tuesday is
-        # explained as a day we are shut, not as insufficient notice.
         if is_dinner_only(new_date) and new_time in LUNCH_TIMES:
             return reject(DINNER_ONLY_MESSAGE, DINNER_ONLY_MESSAGE_ZH, on_date=new_date)
         if not times:
@@ -1946,19 +1643,11 @@ def manage_booking_reschedule(token):
             if moving_day else
             f'Time changed by customer {old_time} to {new_time} {stamp}')
 
-    # A confirmed table that has moved is no longer a confirmed table: the
-    # customer agreed to a time that no longer exists. Dropping back to Pending
-    # is also what puts the booking back into the day-of reminder, so they get
-    # asked to confirm the new one. The staff edit path has always done this;
-    # a change the customer makes themselves is no different, and without it a
-    # moved booking kept a tick it had never been given for that date and was
-    # skipped by the reminder, which only ever texts Pending rows.
+    # Moved bookings go back to Pending so the reminder asks again.
     reconfirm = booking['status'].strip().lower() in ('confirmed', 'yes')
 
     try:
         if moving_day:
-            # The row lives in the tab named after its date, so a new date means
-            # a different tab.
             spreadsheet, _ = get_sheets()
             moved = list(row) + [''] * max(0, len(DATE_TAB_HEADERS) - len(row))
             if reconfirm:
@@ -1980,14 +1669,9 @@ def manage_booking_reschedule(token):
                       f'抱歉，出了一点问题，请致电我们 {RESTAURANT_PHONE}。')
 
     logger.info(f"Booking {booking['reservation_id']}: {note}")
-    # Keeps the staff's master list truthful, and is what lets the link already
-    # sitting in the customer's inbox find the booking in its new tab.
     update_master_booking(str(booking['reservation_id']),
                           str(payload.get('e') or ''), new_date, new_time)
 
-    # A written record of the change, so the guest is not relying on a page
-    # they may have already closed. Sent in the background: the confirmation
-    # they are about to see must not wait on Resend, and must not fail with it.
     guest_email = str(payload.get('e') or '')
     if guest_email:
         threading.Thread(target=send_email_async, args=(
@@ -1999,8 +1683,7 @@ def manage_booking_reschedule(token):
         )).start()
 
     if moving_day:
-        # Redirect so the address bar ends up holding a token that points at
-        # the new tab, and so the page shown is a fresh read of the moved row.
+        # redirect so the URL has a token for the new date
         return redirect(url_for('manage_booking',
                                 token=make_manage_token(booking['reservation_id'],
                                                         new_date, payload.get('e')),
@@ -2013,17 +1696,12 @@ def manage_booking_reschedule(token):
                          notice=('success', f'Your booking has been moved to {new_time}.',
                                  f'您的预订时间已改为 {new_time}。'))
 
-# =============================================================================
-# STAFF ROUTES
-# =============================================================================
+# --- Staff ---
 
 def require_staff_auth(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not session.get('staff_authenticated'):
-            # /staff, not /staff/login: the latter only accepts POST, so a staff
-            # member opening a bookmarked dashboard was redirected to a 405
-            # instead of to the login form.
             return redirect('/staff')
         return f(*args, **kwargs)
     return decorated_function
@@ -2055,40 +1733,19 @@ def staff_login_post():
 @app.route("/staff/dashboard")
 @require_staff_auth
 def staff_dashboard():
-    # Sydney, not the server's clock. Fly runs in UTC, so from 10am Sydney
-    # onwards datetime.now() is still yesterday — the dashboard used to open on
-    # the wrong day for the whole of service.
+    # Server runs in UTC, so use Sydney time.
     return render_template('dashboard.html',
                            default_date=datetime.now(sydney_tz).strftime('%Y-%m-%d'))
 
-# =============================================================================
-# STAFF — THE DAYS AHEAD
-# =============================================================================
-#
-# What the dashboard opens on: one line per date that still has tables to lay,
-# so staff see the book rather than an empty date picker.
-#
-# Bookings live one worksheet tab per date, so the obvious implementation reads
-# every upcoming tab in a loop — twenty-odd round trips against a ceiling of 60
-# reads per minute. values_batch_get() asks for all of them in a single request
-# instead, which holds this whole view to two reads: one for the list of tabs,
-# one for their contents.
-#
-# The counts come from those same tabs, under the same status rules as the day
-# view below, so a number on a line and the list behind it cannot disagree.
+# --- Staff: upcoming days ---
+# One batch read for all upcoming tabs to stay under the Sheets rate limit.
 
 UPCOMING_CACHE_SECONDS = 60
-# A booking can be made 32 days out and moved 30 days from the day of the
-# change, so the number of future tabs is bounded by how the app works. This cap
-# only stops a spreadsheet full of hand-made tabs from building a request URL
-# long enough to be rejected.
-UPCOMING_MAX_DATES = 40
+UPCOMING_MAX_DATES = 40  # keeps the batch request URL a sane length
 
 DATE_TAB_RE = re.compile(r'\d{4}-\d{2}-\d{2}')
 
-# Party size is stored as the bucket the customer picked ('3-4', '10+'), not a
-# number, so a day's covers can only ever be a range. Summing these as integers
-# is what the old total_people did, and it scored 0 for every real booking.
+# Party size is a bucket ('3-4', '10+'), so covers are a range.
 PARTY_SIZE_RE = re.compile(r'(\d+)(?:\s*-\s*(\d+))?\s*(\+?)')
 
 
@@ -2103,12 +1760,7 @@ def _covers_range(people):
 
 
 def _summarise_date_tab(rows):
-    """Counts for one date's rows, or None if nothing is still expected there.
-
-    Cancelled and moved rows are skipped rather than counted: a day whose only
-    rows are cancellations is not upcoming work, and returning None is what
-    keeps it off the list entirely.
-    """
+    """Counts for one date, or None if there are no live bookings."""
     total = confirmed = 0
     covers_low = covers_high = 0
     covers_open = False
@@ -2141,7 +1793,6 @@ def _summarise_date_tab(rows):
 
 
 def _date_labels(date_str, today):
-    """Everything the line needs to name its date, worked out in Sydney time."""
     day = datetime.strptime(date_str, '%Y-%m-%d').date()
     delta = (day - today).days
     return {
@@ -2153,18 +1804,18 @@ def _date_labels(date_str, today):
 
 
 def _read_upcoming(today):
-    """Every date from today on that still has bookings. Two API reads."""
+    """Every date from today with bookings. Two API reads."""
     spreadsheet, _ = get_sheets()
 
     dates = []
     for worksheet in spreadsheet.worksheets():
         title = worksheet.title
         if not DATE_TAB_RE.fullmatch(title):
-            continue            # Master Data, Unknown Replies, anything by hand
+            continue
         try:
             day = datetime.strptime(title, '%Y-%m-%d').date()
         except ValueError:
-            continue            # tab named like a date but isn't one
+            continue
         if day >= today:
             dates.append(title)
 
@@ -2172,12 +1823,10 @@ def _read_upcoming(today):
         return []
     dates = sorted(dates)[:UPCOMING_MAX_DATES]
 
-    # A2:L skips the header row. One request, every tab.
+    # A2:L skips the header
     response = spreadsheet.values_batch_get([f"'{name}'!A2:L" for name in dates])
 
-    # Paired by the tab name the API echoes back rather than by position: if a
-    # range ever came back missing, zipping on order would shift every date
-    # after it onto another day's bookings.
+    # match by name, not position, in case a range is missing
     returned = {}
     for entry in response.get('valueRanges') or []:
         name = str(entry.get('range') or '').split('!')[0].strip("'")
@@ -2196,19 +1845,12 @@ _upcoming_cache = {}
 
 
 def upcoming_days(force=False):
-    """The days ahead, briefly cached.
-
-    Cheap enough to call on every dashboard load: inside the TTL it costs no
-    API calls at all. The cache is per worker process and holds nothing but
-    counts — the day view is always read live, so it stays the truth, and a
-    change made there forces its way back through here.
-    """
+    """Upcoming days, cached for a minute."""
     today = datetime.now(sydney_tz).date()
     now = datetime.now().timestamp()
 
     with _upcoming_lock:
-        # Keyed on the date as well as the clock, so it turns over at midnight
-        # however recently it was filled.
+        # also keyed on date so it resets at midnight
         if (not force
                 and _upcoming_cache.get('date') == today
                 and now - _upcoming_cache.get('at', 0) < UPCOMING_CACHE_SECONDS):
@@ -2267,10 +1909,6 @@ def get_reservations(date):
                     'notes': row[7] if len(row) > 7 else '',
                     'confirmed': row[8] if len(row) > 8 else 'Pending',
                     'reservation_id': row[9] if len(row) > 9 else '',
-                    # Whether the day-of reminder can reach this booking at all.
-                    # Derived rather than stored: it is only ever a fact about
-                    # the number in the cell, so there is nothing to keep in
-                    # step and nothing that can go stale.
                     'textable': bool(mobile_number(row[3] if len(row) > 3 else '')),
                 })
 
@@ -2282,18 +1920,12 @@ def get_reservations(date):
                     continue
             return datetime.strptime('12:00', '%H:%M').time()
 
-        # Tables still to serve come first, in service order. Cancelled and
-        # moved bookings are kept for the record but sink to the bottom, so a
-        # glance down the page is the run of the night.
+        # Live bookings by time, finished ones at the bottom.
         reservations.sort(key=lambda x: (
             x['confirmed'].strip().lower() in FINISHED_STATUSES,
             parse_time(x['time']),
         ))
 
-        # Covers, from the live bookings only. This used to sum the party size
-        # with int() behind an isdigit() guard, and party size is a bucket
-        # ('3-4', '10+') — so the guard was never true and the figure it
-        # reported was always 0.
         live = [r for r in reservations
                 if r['confirmed'].strip().lower() not in FINISHED_STATUSES]
         covers = [_covers_range(r['people']) for r in live]
@@ -2313,31 +1945,16 @@ def get_reservations(date):
         return jsonify({'success': False, 'message': f'Error loading reservations: {str(e)}', 'reservations': []})
 
 
-# =============================================================================
-# STAFF — WRITING TO A BOOKING
-# =============================================================================
-#
-# Every write below addresses a booking by row number, which is a position in a
-# sheet that people also edit by hand. A row number on its own is therefore a
-# guess: insert a row above, and it points at somebody else's table. So each
-# write carries the reservation id the dashboard was showing at that position,
-# and locate_booking_row() refuses to write anywhere that id is not still
-# sitting.
+# --- Staff: editing bookings ---
+# The sheet gets edited by hand, so writes check the reservation id is still
+# on the row before touching it.
 
 def locate_booking_row(date_sheet, row_number, reservation_id):
-    """Confirm a row still holds the booking the dashboard was showing.
-
-    Returns (row_number, row, error). The row number can come back different
-    from the one asked for: if the booking has shifted position, following the
-    id to where it is now is better than refusing a change staff are watching a
-    customer wait for. It only fails when the id is nowhere in the tab.
-    """
+    """Returns (row_number, row, error). Follows the id if the row has moved."""
     rows = date_sheet.get_all_values()
 
     if not reservation_id:
-        # Older rows predate reservation ids, and there is nothing else to
-        # identify them by. Trust the row number, which is all the dashboard
-        # has ever had.
+        # old rows have no id, trust the row number
         if row_number > len(rows):
             return None, None, 'That booking is no longer on this date. Reloading.'
         return row_number, rows[row_number - 1], None
@@ -2388,27 +2005,14 @@ def update_reservation_status():
         return jsonify({'success': False, 'message': f'Error updating reservation: {str(e)}'})
 
 
-# The four things staff are asked to change over the phone. Name, email and dish
-# type are deliberately not here: an email address is what the manage link and
-# the master index are keyed on, so changing it is a different job with its own
-# consequences, not a field on this form.
+# Email isn't editable - manage links are keyed on it.
 STAFF_EDITABLE = ('time', 'date', 'people', 'phone')
 
 
 def _staff_edit_changes(data, row, current_date):
-    """Read the requested new values off the request.
+    """Returns (changes, warnings, error). Only fields that actually changed.
 
-    Returns (changes, warnings, error); error is None when the values are usable.
-
-    Only fields that are actually different from the sheet come back, so a form
-    submitted with one box touched writes one cell, and a form submitted with
-    nothing touched is caught as a no-op rather than costing a write and an
-    email to the customer.
-
-    Staff rules are looser than the customer's on purpose: the whole reason
-    somebody phones the restaurant is to do what the website would not allow, so
-    the two-hour notice and the no-moving-into-today rules are not applied here.
-    What stays is what keeps the sheet readable by everything downstream.
+    Staff skip the 2-hour notice and moving-into-today rules on purpose.
     """
     def cell(index):
         return str(row[index]).strip() if len(row) > index else ''
@@ -2452,11 +2056,7 @@ def _staff_edit_changes(data, row, current_date):
         if target > max_booking_date(today):
             return None, None, ('Bookings can only be moved up to one month '
                                 'ahead.')
-        # Against the tab the row lives in, not its Date cell. The tab is what
-        # decides which day a booking is on, and the two can disagree: an older
-        # row with that cell left blank would otherwise read as a move to the
-        # date it is already on, which appends a second copy to the same tab and
-        # marks the original Modified.
+        # compare to the tab, not the Date cell (can be blank on old rows)
         if new_date != current_date:
             changes['date'] = new_date
 
@@ -2466,13 +2066,7 @@ def _staff_edit_changes(data, row, current_date):
 @app.route("/staff/api/update_booking", methods=['POST'])
 @require_staff_auth
 def update_booking():
-    """Change a booking's time, date, party size or phone number.
-
-    A change of date is a move between worksheet tabs, not a cell write, so it
-    goes through the same move_booking_row() a customer's own reschedule uses:
-    the old row stays visible on its original date marked Modified, and the live
-    row is the new one.
-    """
+    """Change time, date, party size or phone. A new date moves the row."""
     if rate_limited('staff_edit', limit=60, window_seconds=300):
         logger.warning(f"Staff edit rate limit hit from {client_ip()}")
         return jsonify({'success': False,
@@ -2510,10 +2104,7 @@ def update_booking():
                 'message': f'This booking is {status.lower()}. '
                            'Confirm it first if the table is going ahead.'}), 409
 
-        # Optimistic concurrency: the dashboard sends back what it was showing,
-        # and a mismatch means somebody else — another phone, the customer's own
-        # manage link — changed this booking since. Saving over that silently
-        # would lose their change with no trace.
+        # Someone else changed it since the dashboard loaded.
         expect = data.get('expect') or {}
         for field, index in (('time', COL_TIME), ('people', COL_PEOPLE),
                              ('phone', COL_PHONE)):
@@ -2533,10 +2124,7 @@ def update_booking():
         new = dict(old, **changes)
         moving_day = 'date' in changes
 
-        # A confirmed table that has been moved is no longer a confirmed table:
-        # the customer agreed to a time that no longer exists. Dropping it back
-        # to Pending is also what puts it back in the day-of reminder, so they
-        # get asked to confirm the new one.
+        # Moved bookings go back to Pending so the reminder asks again.
         reconfirm = (status.strip().lower() in ('confirmed', 'yes')
                      and ('time' in changes or 'date' in changes))
 
@@ -2546,8 +2134,6 @@ def update_booking():
         note = f'Edited by staff {described} {stamp}'
 
         if moving_day:
-            # move_booking_row() sets the time, date and note on the copy it
-            # writes; everything else has to be right on the row handed to it.
             moved = list(row) + [''] * max(0, len(DATE_TAB_HEADERS) - len(row))
             moved[COL_PEOPLE] = new['people']
             moved[COL_PHONE] = new['phone']
@@ -2567,9 +2153,6 @@ def update_booking():
 
         logger.info(f"Booking {cell(COL_RES_ID) or '?'}: {note}")
 
-        # Master Data is the only index from reservation id to date, so it is
-        # what lets a manage link already sitting in the customer's inbox find
-        # the booking after staff have moved it.
         update_master_booking(cell(COL_RES_ID), '', new['date'], new['time'],
                               new_people=new['people'], new_phone=new['phone'])
 
@@ -2577,10 +2160,7 @@ def update_booking():
             warnings.append('Moved back to Pending, so the reminder text asks '
                             'the customer to confirm the new time.')
 
-        # Notifying is the staff member's call, not ours: most of these edits are
-        # made while the customer is on the phone being told the new time, and an
-        # email that arrives mid-conversation is noise. Sent in the background so
-        # the dashboard never waits on Resend, or fails with it.
+        # Email is opt-in - staff are often on the phone with the customer.
         guest_email = cell(COL_EMAIL)
         notified = bool(data.get('notify')) and bool(guest_email)
         if notified:
@@ -2609,15 +2189,11 @@ def update_booking():
         return jsonify({'success': False,
                         'message': 'Could not save that change. Please try again.'}), 503
 
-# =============================================================================
-# ADMIN ROUTES
-# =============================================================================
+# --- Admin ---
 
 @app.route("/admin")
 @require_staff_auth
 def admin_panel():
-    # Sydney, like everything else that names a service day. On UTC this read as
-    # yesterday from mid-morning, next to two buttons that send today's texts.
     today = datetime.now(sydney_tz).strftime('%Y-%m-%d')
     return f"""<html>
     <head>
@@ -2664,9 +2240,7 @@ def send_tomorrow_confirmations():
     result = send_sms_on_date(tomorrow, message_type="day_before")
     return f"<h2>SMS Results for {tomorrow}</h2><p>{result}</p><a href='/admin'>Back to Admin</a>"
 
-# =============================================================================
-# SMS WEBHOOK
-# =============================================================================
+# --- SMS webhook ---
 
 @app.route('/sms-webhook', methods=['POST'])
 def receive_sms():
@@ -2687,16 +2261,7 @@ def receive_sms():
 
 
 def get_reservation_date_from_sms(received_at):
-    """Which date tab a reply belongs to, read in Sydney time.
-
-    This used to format the provider's timestamp as it arrived, which is UTC.
-    Sydney is ten or eleven hours ahead, so for any reply before mid-morning the
-    UTC date is still yesterday — and the reminder goes out at 8:30, so that was
-    every reply to it. The booking being confirmed sits on today's tab; the
-    lookup was asking for the day before, which either found nothing and filed
-    the reply for manual review, or found a repeat customer's booking from
-    yesterday and confirmed that one instead.
-    """
+    """Date tab for a reply. Converts the provider's UTC timestamp to Sydney."""
     if not received_at:
         return None
     try:
@@ -2706,23 +2271,13 @@ def get_reservation_date_from_sms(received_at):
         return None
 
     if moment.tzinfo is None:
-        # No offset given, so it is already local time as the provider sees it.
+        # no offset = already local
         moment = sydney_tz.localize(moment)
     return moment.astimezone(sydney_tz).strftime('%Y-%m-%d')
 
 
 def _find_sms_row(date_sheet, phone_number):
-    """The row a text reply is about: (row_number, row), or (None, None).
-
-    Matched on the number rather than on the text in the cell. The sheet holds
-    whatever was typed at booking time ('0412345678'), while the provider reports
-    the sender in international form ('61412345678') — the same phone, two
-    spellings, and a literal search finds neither from the other.
-
-    Cancelled rows and rows that have moved to another date are skipped, and a
-    still-Pending row wins over one that has already been answered, so a repeat
-    customer's "Y" lands on the table they are actually being asked about.
-    """
+    """Row a reply is about. Matches normalised numbers and prefers Pending rows."""
     wanted = mobile_number(phone_number)
     if not wanted:
         return None, None
@@ -2804,9 +2359,7 @@ def log_unknown_reply(phone_number, message, received_at):
             unknown_sheet = spreadsheet.worksheet("Unknown Replies")
         except gspread.WorksheetNotFound:
             unknown_sheet = spreadsheet.add_worksheet("Unknown Replies", rows=100, cols=5)
-            # gspread 6 takes the values first and the range second. With the old
-            # order this raised, so the very run that had to create the tab was
-            # the one that failed to label it and lost the reply it was filing.
+            # gspread 6: values first, then range
             unknown_sheet.update(
                 [['Timestamp', 'Phone Number', 'Message', 'Received At', 'Status']],
                 'A1:E1')
@@ -2818,9 +2371,7 @@ def log_unknown_reply(phone_number, message, received_at):
     except Exception as e:
         logger.error(f"Error logging unknown reply: {e}")
 
-# =============================================================================
-# HEALTH CHECK
-# =============================================================================
+# --- Health ---
 
 @app.route("/health")
 def health():
@@ -2828,11 +2379,7 @@ def health():
 
 
 if __name__ == "__main__":
-    # Local dev only — production runs under gunicorn on 8080 (see Dockerfile).
-    # Default 5001 because port 5000 collides with macOS AirPlay and with the
-    # `firebase serve` dev server from the ordering project.
+    # Local dev only. Prod runs gunicorn (see Dockerfile). 5000 clashes with AirPlay.
     port = int(os.environ.get('PORT', 5001))
-    # Auto-reload on save, so editing this file no longer needs a manual
-    # restart. Set FLASK_RELOAD=0 to turn it off. debug stays False: the
-    # Werkzeug debugger allows arbitrary code execution in the browser.
+    # Keep debug off - the Werkzeug debugger allows code execution.
     app.run(host='127.0.0.1', port=port, debug=False, use_reloader=USE_RELOADER)

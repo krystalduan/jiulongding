@@ -1,8 +1,4 @@
-"""
-Staff dashboard, admin and webhook tests.
-
-Run with:  python3 -m pytest tests/test_staff.py -v
-"""
+"""Staff dashboard, admin and webhook tests."""
 import pytest
 
 STAFF_PASSWORD = 'test-staff-password'
@@ -73,8 +69,8 @@ class TestStaffAccessControl:
         assert response.status_code == 302
 
     def test_following_that_redirect_reaches_the_login_form(self, client, sheets):
-        """It used to point at /staff/login, which is POST-only, so a staff
-        member opening a bookmarked dashboard landed on a 405."""
+        """It used to point at /staff/login, which is POST-only, so a staff member opening
+        a bookmarked dashboard landed on a 405."""
         response = client.get('/staff/dashboard', follow_redirects=True)
         assert response.status_code == 200
         assert 'name="password"' in response.get_data(as_text=True)
@@ -161,9 +157,9 @@ class TestTheOrderOfTheDay:
 
 
 class TestCoversForTheDay:
-    """This used to be reported as total_people, summed with int() behind an
-    isdigit() guard — and party size is a bucket, so the guard was never true
-    and the figure was always 0."""
+    """This used to be reported as total_people, summed with int() behind an isdigit()
+    guard — and party size is a bucket, so the guard was never true and the figure was
+    always 0."""
 
     def _day(self, sheets, *sizes_and_statuses):
         from conftest import FakeWorksheet
@@ -244,8 +240,8 @@ class TestUpdateStatus:
 
 
 class TestTheDaysAhead:
-    """The dashboard's landing view: every date from today on that still has
-    tables to lay, counted from the same tabs the day view reads."""
+    """The dashboard's landing view: every date from today on that still has tables to lay,
+    counted from the same tabs the day view reads."""
 
     def _tab(self, sheets, date, *bookings):
         """bookings are (status, people) pairs."""
@@ -338,9 +334,8 @@ class TestTheDaysAhead:
         assert day['covers_high'] == 0
 
     def test_the_whole_view_costs_two_api_reads(self, client, sheets):
-        """One for the tab list, one for every tab's contents. Reading the tabs
-        in a loop instead would be twenty round trips against a ceiling of 60
-        per minute."""
+        """One for the tab list, one for every tab's contents. Reading the tabs in a loop
+        instead would be twenty round trips against a ceiling of 60 per minute."""
         from conftest import days_from_now
         for offset in range(1, 15):
             self._tab(sheets, days_from_now(offset), ('Pending', '3-4'))
@@ -358,8 +353,8 @@ class TestTheDaysAhead:
         assert sheets.reads == [], "the overview should not re-read within the TTL"
 
     def test_refresh_bypasses_the_cache(self, client, sheets):
-        """What a staff member gets after confirming a booking and tapping back:
-        the count they just changed must not come from cache."""
+        """What a staff member gets after confirming a booking and tapping back: the count
+        they just changed must not come from cache."""
         from conftest import days_from_now
         self._tab(sheets, days_from_now(1), ('Pending', '3-4'))
         self._days(client)
@@ -393,8 +388,8 @@ class TestTheDaysAhead:
 class TestTheDashboardPage:
 
     def test_it_defaults_to_today_in_sydney(self, client, sheets, app_module):
-        """Fly runs in UTC, so datetime.now() is yesterday from 10am Sydney on —
-        the dashboard used to open on the wrong day for all of service."""
+        """Fly runs in UTC, so datetime.now() is yesterday from 10am Sydney on — the
+        dashboard used to open on the wrong day for all of service."""
         from datetime import datetime
         login(client)
         html = client.get('/staff/dashboard').get_data(as_text=True)
@@ -422,8 +417,8 @@ class TestCronEndpoint:
 
 
 class TestSmsIsSentOnce:
-    """The daily job is triggered twice (once per Sydney DST offset), and can
-    also be re-run by hand, so sending must be idempotent per day."""
+    """The daily job is triggered twice (once per Sydney DST offset), and can also be re-
+    run by hand, so sending must be idempotent per day."""
 
     def _sheet_with_pending_bookings(self, sheets, app_module, n=3):
         from conftest import FakeWorksheet
@@ -491,8 +486,8 @@ class TestSmsIsSentOnce:
         assert len(sent) == 1
 
     def test_marker_records_the_send_date(self, sheets, app_module, monkeypatch):
-        """The marker must carry the date, or tomorrow's run would think it
-        had already sent and skip everyone."""
+        """The marker must carry the date, or tomorrow's run would think it had already
+        sent and skip everyone."""
         import re
         from datetime import datetime
         today = self._sheet_with_pending_bookings(sheets, app_module, n=1)
@@ -506,8 +501,8 @@ class TestSmsIsSentOnce:
 
     def test_the_summary_counts_untextable_bookings_apart(self, sheets, app_module,
                                                           monkeypatch):
-        """"Already sent" is the job working; "no mobile" is a table that will
-        sit at Pending until somebody rings it. One number for both hid that."""
+        """"Already sent" is the job working; "no mobile" is a table that will sit at
+        Pending until somebody rings it. One number for both hid that."""
         from conftest import FakeWorksheet
         from datetime import datetime
         today = datetime.now(app_module.sydney_tz).strftime('%Y-%m-%d')
@@ -533,9 +528,9 @@ class TestSmsIsSentOnce:
 
 
 class TestWhichDayAReplyIsAbout:
-    """The provider timestamps in UTC and Sydney is ten hours ahead of it, so
-    formatting that instant directly named the wrong day for any reply before
-    mid-morning — and the reminder goes out at 8:30, so that was all of them."""
+    """The provider timestamps in UTC and Sydney is ten hours ahead of it, so formatting
+    that instant directly named the wrong day for any reply before mid-morning — and the
+    reminder goes out at 8:30, so that was all of them."""
 
     def test_an_early_morning_reply_belongs_to_the_sydney_day(self, app_module):
         # 8:35am Sydney on the 13th is 22:35 UTC on the 12th.
@@ -581,9 +576,9 @@ class TestWhichBookingAReplyIsAbout:
 
     def test_a_reply_confirms_the_live_booking_not_a_cancelled_one(
             self, sheets, app_module):
-        """find() took the first phone match in the tab, so a customer who had
-        already cancelled once that day confirmed the cancelled row and left the
-        real table sitting at Pending."""
+        """find() took the first phone match in the tab, so a customer who had already
+        cancelled once that day confirmed the cancelled row and left the real table
+        sitting at Pending."""
         sheet = self._day(sheets, app_module,
                           ('Jane', '61412345678', 'Cancelled'),
                           ('Jane', '61412345678', 'Pending'))
@@ -600,8 +595,8 @@ class TestWhichBookingAReplyIsAbout:
         assert sheet.rows[2][8] == 'Confirmed'
 
     def test_a_number_stored_in_local_form_still_matches(self, sheets, app_module):
-        """The sheet holds what was typed at booking time; the provider reports
-        the sender in international form. A literal search finds neither."""
+        """The sheet holds what was typed at booking time; the provider reports the sender
+        in international form. A literal search finds neither."""
         sheet = self._day(sheets, app_module, ('Jane', '0412345678', 'Pending'))
         assert self._reply(app_module, phone='61412345678') is True
         assert sheet.rows[1][8] == 'Confirmed'
@@ -622,9 +617,8 @@ class TestWhichBookingAReplyIsAbout:
         assert 'Unknown Replies' in sheets.date_sheets
 
     def test_filing_an_unknown_reply_labels_the_new_tab(self, sheets, app_module):
-        """The header write used the old gspread argument order, so the one run
-        that had to create this tab was the run that raised instead of filing
-        the reply."""
+        """The header write used the old gspread argument order, so the one run that had to
+        create this tab was the run that raised instead of filing the reply."""
         self._reply(app_module, phone='61499000111')
         unknown = sheets.date_sheets['Unknown Replies']
         assert unknown.rows[0][:2] == ['Timestamp', 'Phone Number']

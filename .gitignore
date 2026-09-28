@@ -1,5 +1,4 @@
-# Credentials — keep these listed explicitly, so nothing relies on the
-# blanket *.json rule below to stay secret.
+# Credentials
 jiulongding-9e2cffe41bca.json
 config.json
 *-service-account.json
@@ -30,7 +29,7 @@ venv/
 .coverage
 htmlcov/
 
-# Node — this is a Flask project; node_modules here is a mistake
+# Node
 node_modules/
 npm-debug.log*
 

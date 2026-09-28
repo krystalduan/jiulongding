@@ -1,11 +1,4 @@
-"""
-Booking form tests.
-
-Run with:  python3 -m pytest tests/ -v
-
-A booking is ACCEPTED when the response is a 302 redirect to the success page
-and a row lands in the spreadsheet. It is REJECTED when nothing is written.
-"""
+"""Booking form tests."""
 from datetime import datetime, timedelta
 
 import pytest
@@ -244,16 +237,14 @@ class TestDateValidation:
         assert_rejected(submit(client, date=days_from_now(-1)), sheets, 'past date')
 
     def test_far_future_date_is_rejected(self, client, sheets):
-        # Relative, not a fixed date: a hardcoded one silently drifts inside the
-        # booking window as time passes and the test then fails for no reason.
+        # relative date so the test doesn't drift
         assert_rejected(submit(client, date=days_from_now(45)), sheets, 'one month')
 
     def test_two_months_out_is_rejected(self, client, sheets):
         assert_rejected(submit(client, date=days_from_now(60)), sheets, 'one month')
 
     def test_just_inside_one_month_is_accepted(self, client, sheets):
-        # 28 days, not 30: the cap is a calendar month, so in February a date 30
-        # days out is genuinely past it and this would fail for a month a year.
+        # 28 not 30 - February
         assert_accepted(submit(client, date=days_from_now(28)), sheets)
 
     def test_just_outside_one_month_is_rejected(self, client, sheets):
@@ -273,8 +264,8 @@ class TestDateValidation:
 
     @pytest.mark.parametrize('url', ['/', '/book'])
     def test_the_picker_is_limited_to_the_window(self, client, app_module, url):
-        """Rendered into the HTML, not left to JavaScript: it is what greys the
-        unbookable days out in the native calendar before any script runs."""
+        """Rendered into the HTML, not left to JavaScript: it is what greys the unbookable
+        days out in the native calendar before any script runs."""
         import re
         today = datetime.now(app_module.sydney_tz).date()
         html = client.get(url).get_data(as_text=True)

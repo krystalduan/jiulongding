@@ -105,8 +105,7 @@ body {
     margin-bottom: 16px;
 }
 
-/* A button, not a div: this is the main way into a day, so it has to be
-   reachable by keyboard and give a proper tap target. */
+/* a <button> so it works with keyboard */
 .day-row {
     width: 100%;
     display: flex;
@@ -410,17 +409,14 @@ body {
     border: 1px solid #fecaca;
 }
 
-/* The row left behind when a customer moved this booking to another date.
-   Same red as a cancellation: neither is a table to lay. */
+/* moved to another date */
 .status-modified {
     background: #fef2f2;
     color: #dc2626;
     border: 1px solid #fecaca;
 }
 
-/* Pending, but the number on file cannot receive the reminder text, so nobody
-   is going to reply Y to anything. Amber like Pending — it is the same state —
-   but it names the reason it will not clear itself. */
+/* pending, but no mobile to text */
 .status-call {
     background: #fff7ed;
     color: #c2410c;
@@ -440,8 +436,7 @@ body {
     cursor: help;
 }
 
-/* Cancelled and moved bookings sort to the bottom of the list. Fading them
-   keeps the run of the night readable without hiding the record. */
+/* cancelled / moved rows are faded */
 .reservation-card--finished {
     opacity: 0.65;
 }
@@ -513,8 +508,7 @@ body {
 }
 
 /* ── Edit panel ── */
-/* Opens inside the card, not as a modal: this is used on a phone mid-service,
-   where a dialog means scroll-locking a page somebody is still reading. */
+/* inline in the card, not a modal */
 .edit-panel {
     margin-top: 14px;
     padding-top: 14px;
@@ -602,9 +596,7 @@ body {
 .phone-link:hover { color: #b91c1c; border-bottom-color: #b91c1c; }
 
 /* ── Toasts ── */
-/* A stack, not one fixed position per message: a save can report both that the
-   booking moved and that the move dropped it back to Pending, and stacked
-   absolutely they landed on top of each other. */
+/* stacked so multiple toasts don't overlap */
 .toast-stack {
     position: fixed;
     bottom: 24px;
@@ -693,8 +685,6 @@ body {
         font-size: 17px;
     }
 
-    /* Date on one line, its numbers underneath — a phone in a service window
-       has no room for four columns. */
     .day-row {
         padding: 14px 16px;
         gap: 12px;
@@ -737,8 +727,7 @@ body {
         width: 100%;
     }
 
-    /* Two by two rather than four across: "17–24" does not fit a quarter of a
-       phone without wrapping mid-number. */
+    /* 2x2 so ranges like "17–24" don't wrap */
     .stats-bar {
         grid-template-columns: repeat(2, 1fr);
         gap: 8px;
@@ -783,8 +772,7 @@ body {
         text-align: center;
     }
 
-    /* One field per row, and 16px inputs so iOS does not zoom the page every
-       time a field is focused. */
+    /* 16px inputs stop iOS zooming on focus */
     .edit-grid {
         grid-template-columns: 1fr;
         gap: 10px;

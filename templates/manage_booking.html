@@ -5,23 +5,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Your Booking - JiuLongDing</title>
-    <!-- Manage links arrive from email, so this page is often a cold first
-         visit. Same preload treatment as the confirmation page. -->
+    <!-- preload the hero so it doesn't wait on the CSS -->
     <link rel="preload" as="image" fetchpriority="high" href="{{ url_for('static', filename='photos/hero-1200.webp') }}"
         media="(max-width: 999px)">
     <link rel="preload" as="image" fetchpriority="high" href="{{ url_for('static', filename='photos/hero-1920.webp') }}"
         media="(min-width: 1000px)">
     <link rel="preload" href="{{ url_for('static', filename='fonts/chineseFont-subset.woff2') }}" as="font"
         type="font/woff2" crossorigin>
-    <link rel="preload" href="{{ url_for('static', filename='fonts/EBGaramond-VariableFont_wght.woff2') }}" as="font"
+    <link rel="preload" href="{{ url_for('static', filename='fonts/EBGaramond-latin.woff2') }}" as="font"
         type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
-    <!-- Manage links should never be indexed or leak through a referrer. -->
+    <!-- contains a manage token, keep it private -->
     <meta name="robots" content="noindex, nofollow">
     <meta name="referrer" content="no-referrer">
     <script>
-        // Applied before first paint, so a reader who chose 中文 never sees a
-        // flash of English first. Kept inline for that reason.
+        // inline so the saved language applies before first paint
         (function () {
             try {
                 var saved = localStorage.getItem('jld-lang');
@@ -57,7 +55,7 @@
                 </div>
                 {% endif %}
 
-                {# ---------------- active booking ---------------- #}
+                {# active #}
                 {% if state == 'active' %}
                 <p class="success-message page-subtitle">
                     <span class="lang-en">Modify or cancel your booking</span><span class="lang-zh">修改或取消您的预订</span>
@@ -159,7 +157,7 @@
                     </div>
                 </div>
 
-                {# ---------------- already cancelled ---------------- #}
+                {# cancelled #}
                 {% elif state == 'cancelled' %}
                 <p class="success-message page-subtitle">
                     <span class="lang-en">Booking cancelled</span><span class="lang-zh">预订已取消</span>
@@ -176,7 +174,7 @@
                             href="tel:{{ restaurant_phone | replace(' ', '') }}">{{ restaurant_phone }}</a>。</span>
                 </p>
 
-                {# ---------------- link no longer valid ---------------- #}
+                {# invalid / expired #}
                 {% elif state == 'expired' %}
                 <p class="success-message page-subtitle">
                     <span class="lang-en">Link expired</span><span class="lang-zh">链接已失效</span>
@@ -247,9 +245,7 @@
     </main>
 
     <script>
-        // Progressive enhancement: without JS the confirm panel is simply
-        // visible from the start, so cancelling still works — it just shows
-        // both steps at once rather than revealing the second on click.
+        // without JS the confirm panel is just always visible
         (function () {
             var start = document.getElementById('cancel-start');
             var panel = document.getElementById('cancel-confirm');
@@ -269,15 +265,13 @@
             }
         })();
 
-        // Language pill. The choice is remembered, so a reader who switches to
-        // 中文 keeps it across the reschedule redirect and any later visit.
+        // language toggle, remembered in localStorage
         (function () {
             var root = document.documentElement;
             var toggle = document.getElementById('lang-toggle');
             if (!toggle) return;
 
-            // A <select> shows one label per option, so the date picker cannot
-            // use the CSS swap the rest of the page relies on.
+            // <select> options can't use the CSS swap, so relabel them
             function applyOptionLabels(lang) {
                 var options = document.querySelectorAll('#date option[data-en]');
                 for (var i = 0; i < options.length; i++) {
@@ -297,11 +291,7 @@
             });
         })();
 
-        // Which times are on offer depends on the date: today is trimmed to
-        // slots at least 2 hours out, every other day offers all of them.
-        // Reload with ?on= so the time list matches the date just picked.
-        // Without JS the list is simply the one for the booking's own date,
-        // and the server rejects any combination that isn't allowed.
+        // reload with ?on= to get that date's times
         (function () {
             var form = document.getElementById('change-form');
             var date = document.getElementById('date');

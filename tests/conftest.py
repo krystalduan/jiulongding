@@ -1,10 +1,4 @@
-"""
-Test fixtures for the JLD booking app.
-
-These tests run completely offline: Google Sheets, email and SMS are all
-replaced with fakes, so nothing touches the real spreadsheet or sends
-anything to a customer.
-"""
+"""Test fixtures for the JLD booking app."""
 import os
 import re
 import sys
@@ -16,8 +10,7 @@ import pytest
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
-# Fake credentials must be in place BEFORE app.py is imported, otherwise it
-# tries to read the real .env / service-account file.
+# Fake env must be set before importing app.
 os.environ.setdefault('SECRET_KEY', 'test-secret-key')
 os.environ.setdefault('STAFF_PASSWORD', 'test-staff-password')
 os.environ.setdefault('CRON_SECRET', 'test-cron-secret')
@@ -71,12 +64,7 @@ class FakeWorksheet:
         target[col - 1] = value
 
     def update(self, values, range_name=None, **kwargs):
-        """gspread 6 takes the values first and the range second.
-
-        Raising on the old gspread 5 order is the point: the app had a call left
-        the other way round, and a fake that quietly accepted either would have
-        let it keep passing tests while failing in production.
-        """
+        """gspread 6 takes the values first and the range second."""
         if not isinstance(values, (list, tuple)):
             raise TypeError('update() takes the values first, then the range')
 
@@ -94,13 +82,7 @@ class FakeWorksheet:
                 self.update_cell(row + r_offset, col + c_offset, value)
 
     def batch_update(self, updates):
-        """Really apply the writes.
-
-        This used to be a no-op, which quietly made the sheet untestable:
-        the day-of SMS job records "already sent" markers through this
-        method, so a stub here would let duplicate-send tests pass no
-        matter what the code did.
-        """
+        """Really apply the writes."""
         self.batches.append(updates)
         for update in updates:
             for row, col, value in _parse_a1(update['range'], update['values']):
@@ -116,8 +98,7 @@ class FakeWorksheet:
 
 
 def _parse_a1(cell_range, values):
-    """'K5' + [['x']] -> [(5, 11, 'x')]. Single cells only, which is all the
-    app writes."""
+    """'K5' + [['x']] -> [(5, 11, 'x')]. Single cells only, which is all the app writes."""
     match = re.fullmatch(r'([A-Z]+)(\d+)', cell_range.strip())
     if not match:
         return []
@@ -136,9 +117,7 @@ class FakeSpreadsheet:
     def __init__(self):
         self.master = FakeWorksheet('Master Data', [['id', 'name', 'date']])
         self.date_sheets = {}
-        # Every call that would cost a Google Sheets API read, so tests can
-        # assert the upcoming view stays at two of them however many tabs
-        # there are.
+        # counts Sheets reads
         self.reads = []
 
     def worksheet(self, name):
@@ -157,12 +136,7 @@ class FakeSpreadsheet:
         return [self.master] + list(self.date_sheets.values())
 
     def values_batch_get(self, ranges, params=None):
-        """Many tabs in a single read, like the real batchGet.
-
-        Mirrors two details the app has to cope with: the echoed range is
-        resolved ("'2026-08-14'!A2:L100", not the A2:L that was asked for),
-        and an empty range comes back with no 'values' key at all.
-        """
+        """Many tabs in a single read, like the real batchGet."""
         self.reads.append('values_batch_get')
         value_ranges = []
         for spec in ranges:
@@ -191,8 +165,8 @@ def sheets(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def clean_upcoming_cache():
-    """The dashboard's upcoming view is cached per process for 60 seconds, so
-    without this one test's counts would be served to the next."""
+    """The dashboard's upcoming view is cached per process for 60 seconds, so without this
+    one test's counts would be served to the next."""
     flask_app._upcoming_cache.clear()
     yield
     flask_app._upcoming_cache.clear()
@@ -224,11 +198,6 @@ def app_module():
     return flask_app
 
 
-# The in-process APScheduler was removed — day-of SMS is now driven by
-# GitHub Actions calling /api/send-sms-cron — so there is no longer a
-# background thread for the test session to shut down.
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -242,12 +211,7 @@ def days_from_now(n):
 
 
 def lunch_day_from_now(n):
-    """days_from_now(n), moved forward to a day that actually serves lunch.
-
-    Tuesday and Wednesday are dinner-only, so a test that just wants "an
-    ordinary future date" has to say so — otherwise it passes or fails
-    depending on which weekday the suite happens to run on.
-    """
+    """days_from_now(n), moved forward to a day that actually serves lunch."""
     day = (sydney_now() + timedelta(days=n)).date()
     while day.weekday() in flask_app.DINNER_ONLY_WEEKDAYS:
         day += timedelta(days=1)

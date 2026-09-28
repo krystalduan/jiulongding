@@ -1,14 +1,4 @@
-"""
-When the restaurant is open, and when the day-of texts go out.
-
-Covers five rules that were previously wrong or missing:
-  * Tuesday and Wednesday are dinner-only — no lunch sitting to book
-  * a customer moving a confirmed booking drops it back to Pending
-  * the reminder history does not follow a booking to a new date
-  * the manage link does not read all of Master Data to find a booking
-    that is exactly where its token says it is
-  * the day-of texts go out at 08:30 Sydney, not whenever a UTC cron fires
-"""
+"""When the restaurant is open, and when the day-of texts go out."""
 from datetime import datetime, timedelta
 
 import pytest
@@ -265,8 +255,8 @@ class TestSmsSendWindow:
         assert not is_open
 
     def test_the_aest_early_cron_is_a_no_op(self, app_module):
-        """21:30 UTC is 07:30 in Sydney on AEST — this is the call that used to
-        send the texts an hour early."""
+        """21:30 UTC is 07:30 in Sydney on AEST — this is the call that used to send the
+        texts an hour early."""
         assert not self.at(app_module, 7, 30)[0]
         assert self.at(app_module, 8, 30)[0], "the 22:30 UTC call must still send"
 

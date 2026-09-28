@@ -1,8 +1,4 @@
-"""
-Staff editing a booking from the dashboard: time, date, party size, phone.
-
-Run with:  python3 -m pytest tests/test_staff_edit.py -v
-"""
+"""Staff editing a booking from the dashboard: time, date, party size, phone."""
 import pytest
 
 from conftest import FakeWorksheet, days_from_now
@@ -161,8 +157,8 @@ class TestMovingToAnotherDate:
         assert moved[DATE] == new_date
 
     def test_the_old_row_is_kept_and_marked_modified(self, client, day):
-        """Staff opening the original date should see that the table moved,
-        rather than find a booking that vanished overnight."""
+        """Staff opening the original date should see that the table moved, rather than
+        find a booking that vanished overnight."""
         date, sheet = day
         edit(client, date, date=days_from_now(6))
         assert sheet.rows[1][CONFIRMED] == 'Modified'
@@ -184,8 +180,8 @@ class TestMovingToAnotherDate:
         assert new_date in sheets.date_sheets
 
     def test_master_data_follows_the_move(self, client, sheets, day):
-        """This is what lets a manage link already in the customer's inbox find
-        the booking in its new tab."""
+        """This is what lets a manage link already in the customer's inbox find the booking
+        in its new tab."""
         date, _ = day
         new_date = days_from_now(6)
         edit(client, date, date=new_date, time='12:00')
@@ -193,8 +189,8 @@ class TestMovingToAnotherDate:
         assert sheets.master.rows[1][3] == '12:00'
 
     def test_moving_to_today_is_allowed_for_staff(self, client, sheets, day):
-        """The customer's own reschedule refuses this — a same-day change to the
-        kitchen's numbers goes through the phone. This *is* that phone call."""
+        """The customer's own reschedule refuses this — a same-day change to the kitchen's
+        numbers goes through the phone. This *is* that phone call."""
         date, _ = day
         today = days_from_now(0)
         assert edit(client, date, date=today).get_json()['success'] is True
@@ -206,8 +202,8 @@ class TestMovingToAnotherDate:
 # ---------------------------------------------------------------------------
 
 class TestNotWritingToTheWrongTable:
-    """A row number is a position in a sheet people also edit by hand, so on its
-    own it is a guess about which booking sits there."""
+    """A row number is a position in a sheet people also edit by hand, so on its own it is
+    a guess about which booking sits there."""
 
     def test_the_id_is_followed_when_the_row_has_shifted(self, client, sheets):
         date = days_from_now(2)
@@ -234,10 +230,8 @@ class TestNotWritingToTheWrongTable:
         assert sheet.batches == [], 'nothing should have been written'
 
     def test_a_row_whose_date_cell_is_blank_is_not_moved_onto_itself(self, client, sheets):
-        """Which day a booking is on is decided by the tab it lives in, not by
-        its Date cell — and older rows have that cell empty. Comparing against
-        the cell made 'same date' look like a move, which appended a second copy
-        to the same tab and marked the original Modified."""
+        """Which day a booking is on is decided by the tab it lives in, not by its Date
+        cell — and older rows have that cell empty."""
         date = days_from_now(3)
         row = booking_row()
         row[DATE] = ''
@@ -271,8 +265,7 @@ class TestNotWritingToTheWrongTable:
         assert sheet.rows[1][CONFIRMED] == 'Pending', 'a stranger was cancelled'
 
     def test_a_status_write_without_an_id_still_works(self, client, sheets):
-        """Rows created before reservation ids existed have nothing else to
-        identify them by."""
+        """Rows created before reservation ids existed have nothing else to identify them by."""
         date = days_from_now(2)
         sheet = a_day(sheets, date, booking_row(res_id=''))
         login(client)
@@ -345,7 +338,7 @@ class TestValidation:
         assert edit(client, date, time=bad_time).status_code == 400
         assert sheet.rows[1][TIME] == '19:00'
 
-    @pytest.mark.parametrize('bad_size', ['0', '5-6', 'lots', '', '100'])
+    @pytest.mark.parametrize('bad_size', ['0', '4-6', 'lots', '', '100'])
     def test_a_party_size_that_is_not_one_of_ours_is_refused(self, client, day, bad_size):
         date, _ = day
         assert edit(client, date, people=bad_size).status_code == 400
@@ -394,9 +387,9 @@ class TestValidation:
 # ---------------------------------------------------------------------------
 
 class TestNonMobileNumbers:
-    """Staff take bookings from landlines and overseas numbers, so those are
-    kept — but the day-of reminder can never reach them, and pretending
-    otherwise leaves a table nobody ever confirms."""
+    """Staff take bookings from landlines and overseas numbers, so those are kept — but the
+    day-of reminder can never reach them, and pretending otherwise leaves a table nobody
+    ever confirms."""
 
     @pytest.fixture
     def day(self, sheets, client):
@@ -430,9 +423,8 @@ class TestNonMobileNumbers:
         assert flags == {'0298765432': False, '61412345678': True}
 
     def test_the_reminder_text_skips_it(self, client, sheets, app_module, monkeypatch):
-        """The guard has to be what the number is, not whether the cell is
-        filled — handing a landline to the SMS API spends a message on a send
-        that cannot arrive."""
+        """The guard has to be what the number is, not whether the cell is filled — handing
+        a landline to the SMS API spends a message on a send that cannot arrive."""
         today = days_from_now(0)
         a_day(sheets, today,
               booking_row(name='Landline', phone='0298765432'),
@@ -458,8 +450,8 @@ class TestReconfirming:
         return date, sheet
 
     def test_moving_a_confirmed_booking_puts_it_back_to_pending(self, client, sheets):
-        """They agreed to a time that no longer exists, and Pending is also what
-        puts them back in the day-of reminder to confirm the new one."""
+        """They agreed to a time that no longer exists, and Pending is also what puts them
+        back in the day-of reminder to confirm the new one."""
         date, sheet = self._confirmed_day(sheets, client)
         response = edit(client, date, time='12:00')
         assert response.get_json()['success'] is True
@@ -477,8 +469,8 @@ class TestReconfirming:
         assert sheets.date_sheets[new_date].rows[-1][CONFIRMED] == 'Pending'
 
     def test_correcting_a_phone_number_leaves_it_confirmed(self, client, sheets):
-        """A wrong digit in a phone number is not a reason to make somebody
-        confirm their table again."""
+        """A wrong digit in a phone number is not a reason to make somebody confirm their
+        table again."""
         date, sheet = self._confirmed_day(sheets, client)
         edit(client, date, phone='0499888777')
         assert sheet.rows[1][CONFIRMED] == 'Confirmed'
@@ -498,8 +490,8 @@ class TestReconfirming:
 class TestNotifyingTheCustomer:
 
     def test_nothing_is_sent_unless_staff_ask(self, client, sheets):
-        """Most of these edits are made with the customer on the phone being
-        told the new time, so an email is the staff member's call."""
+        """Most of these edits are made with the customer on the phone being told the new
+        time, so an email is the staff member's call."""
         date = days_from_now(3)
         a_day(sheets, date, booking_row())
         login(client)
@@ -520,9 +512,7 @@ class TestNotifyingTheCustomer:
         assert any('email' in warning.lower() for warning in body['warnings'])
 
     def test_the_email_strikes_through_what_changed(self, app_module):
-        """build_change_email only crossed out the date and time. Staff can now
-        change the party size and the phone too, and a new party size shown with
-        nothing struck out beside it reads as though we had it wrong all along."""
+        """build_change_email only crossed out the date and time."""
         _, html, text = app_module.build_change_email(
             'Jane',
             {'date': '2026-08-20', 'time': '19:00', 'people': '7-10',

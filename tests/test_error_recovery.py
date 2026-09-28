@@ -1,13 +1,4 @@
-"""
-What a customer sees when a booking is rejected.
-
-The rules these lock in:
-  * a rejected submit comes back with every answer still filled in
-  * the reason is on the page, marked up so it can be found and announced
-  * an expired or unrecognised token is recoverable, not a silent bounce home
-  * several booking pages open at once do not cancel each other out
-  * resubmitting a saved booking shows the confirmation instead of double-booking
-"""
+"""What a customer sees when a booking is rejected."""
 import re
 
 import pytest

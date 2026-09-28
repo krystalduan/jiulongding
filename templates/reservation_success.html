@@ -5,25 +5,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reservation Confirmed - JiuLongDing</title>
-    <!-- Start the background download immediately. A CSS background is
-         otherwise only discovered after the stylesheet has been fetched and
-         parsed, which is what made this page load slowly. -->
+    <!-- preload the hero so it doesn't wait on the CSS -->
     <link rel="preload" as="image" fetchpriority="high" href="{{ url_for('static', filename='photos/hero-1200.webp') }}"
         media="(max-width: 999px)">
     <link rel="preload" as="image" fetchpriority="high" href="{{ url_for('static', filename='photos/hero-1920.webp') }}"
         media="(min-width: 1000px)">
     <link rel="preload" href="{{ url_for('static', filename='fonts/chineseFont-subset.woff2') }}" as="font"
         type="font/woff2" crossorigin>
-    <link rel="preload" href="{{ url_for('static', filename='fonts/EBGaramond-VariableFont_wght.woff2') }}" as="font"
+    <link rel="preload" href="{{ url_for('static', filename='fonts/EBGaramond-latin.woff2') }}" as="font"
         type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
-    <!-- This page shows a booking's details and carries its manage link, so it
-         should never be indexed or leak through a referrer. -->
+    <!-- contains a manage token, keep it private -->
     <meta name="robots" content="noindex, nofollow">
     <meta name="referrer" content="no-referrer">
     <script>
-        // Before first paint, so the chosen language never flashes. Shared
-        // with the manage page through the same localStorage key.
+        // inline so the saved language applies before first paint
         (function () {
             try {
                 var saved = localStorage.getItem('jld-lang');
