@@ -16,6 +16,7 @@ os.environ.setdefault('STAFF_PASSWORD', 'test-staff-password')
 os.environ.setdefault('CRON_SECRET', 'test-cron-secret')
 os.environ.setdefault('SMS_WEBHOOK_SECRET', 'test-webhook-secret')
 os.environ.pop('GOOGLE_CREDENTIALS', None)
+os.environ.pop('ALERT_EMAIL', None)  # never email real alerts from tests
 
 # Stop oauth2client from validating the service-account JSON.
 _fake_oauth = types.ModuleType('oauth2client.service_account')
@@ -178,6 +179,16 @@ def clean_rate_limits():
     flask_app._rate_hits.clear()
     yield
     flask_app._rate_hits.clear()
+
+
+@pytest.fixture(autouse=True)
+def clean_failure_counts():
+    """Alert counters are per process, so reset them between tests."""
+    flask_app._failure_times.clear()
+    flask_app._last_alert_at.clear()
+    yield
+    flask_app._failure_times.clear()
+    flask_app._last_alert_at.clear()
 
 
 @pytest.fixture(autouse=True)

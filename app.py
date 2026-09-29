@@ -1,7 +1,9 @@
 from dotenv import load_dotenv
 
-from flask import Flask, render_template, request, redirect, url_for, jsonify, session
+from flask import (Flask, render_template, request, redirect, url_for, jsonify, session,
+                   got_request_exception)
 from datetime import datetime, timedelta
+from time import monotonic
 from functools import wraps
 from html import escape
 from itsdangerous import URLSafeSerializer, BadSignature
@@ -15,7 +17,6 @@ import re
 from oauth2client.service_account import ServiceAccountCredentials
 import requests
 import base64
-import json
 import os
 import secrets
 
@@ -27,7 +28,108 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# --- Monitoring ---
+# Every real failure is logged as "FAILED <kind>: ..." so one search for FAILED
+# in the Fly log viewer finds them all. When one kind keeps failing, an alert
+# email goes to ALERT_EMAIL. Counts live in memory, so a machine restart
+# resets them.
+
+ALERT_EMAIL = os.environ.get('ALERT_EMAIL', '').strip()
+ALERT_THRESHOLD = 3                 # failures of one kind...
+ALERT_WINDOW_SECONDS = 60 * 60      # ...within this long sends an alert
+ALERT_COOLDOWN_SECONDS = 60 * 60    # then at most one alert per kind per hour
+# Bad enough to alert on the first one.
+ALERT_IMMEDIATELY = {'sms-job', 'unhandled', 'booking-change'}
+
+_failure_times = {}
+_last_alert_at = {}
+_failures_lock = threading.Lock()
+
+
+def mask_email(email):
+    """kr***@gmail.com - enough to tell customers apart in the logs."""
+    local, _, domain = str(email or '').partition('@')
+    if not domain:
+        return '***'
+    return f"{local[:2]}***@{domain}"
+
+
+def mask_phone(phone):
+    digits = re.sub(r'\D', '', str(phone or ''))
+    return f"***{digits[-3:]}" if digits else '***'
+
+
+def log_failure(kind, message, exc_info=False):
+    logger.error(f"FAILED {kind}: {message}", exc_info=exc_info)
+    record_failure(kind, message)
+
+
+def record_failure(kind, message, now=None):
+    """Count a failure; returns True when it triggers an alert."""
+    now = monotonic() if now is None else now
+    with _failures_lock:
+        recent = [t for t in _failure_times.get(kind, [])
+                  if now - t < ALERT_WINDOW_SECONDS]
+        recent.append(now)
+        _failure_times[kind] = recent
+
+        threshold = 1 if kind in ALERT_IMMEDIATELY else ALERT_THRESHOLD
+        if len(recent) < threshold:
+            return False
+        last = _last_alert_at.get(kind)
+        if last is not None and now - last < ALERT_COOLDOWN_SECONDS:
+            return False
+        _last_alert_at[kind] = now
+        count = len(recent)
+
+    if not ALERT_EMAIL:
+        logger.warning(f"Alert for '{kind}' not emailed: ALERT_EMAIL is not set")
+        return True
+    threading.Thread(target=send_alert_email, args=(kind, message, count),
+                     daemon=True).start()
+    return True
+
+
+def send_alert_email(kind, message, count):
+    # Plain logger calls only here - a failing alert must not raise another.
+    when = datetime.now(timezone('Australia/Sydney')).strftime('%d/%m/%y %H:%M')
+    subject = (f"[JLD alert] {kind} failed" if count == 1 else
+               f"[JLD alert] {kind} failed {count} times in the last hour")
+    text = (f"{subject}\n\n"
+            f"Latest ({when} Sydney):\n  {message}\n\n"
+            f"Search the Fly logs for \"FAILED {kind}\" for details.\n"
+            f"You won't get another alert for '{kind}' for an hour.\n")
+    try:
+        response = requests.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {os.environ.get('RESEND_API_KEY')}"},
+            json={
+                "from": "JiuLongDing Alerts <reservations@jiulongding.au>",
+                "to": [ALERT_EMAIL],
+                "subject": subject,
+                "text": text,
+            },
+            timeout=10
+        )
+        if response.status_code != 200:
+            logger.warning(f"Alert email not sent: Resend {response.status_code}: {response.text}")
+        else:
+            logger.info(f"Alert email sent for '{kind}'")
+    except Exception as e:
+        logger.warning(f"Alert email not sent: {e}")
+
+
 app = Flask(__name__)
+
+
+def _log_unhandled(sender, exception, **extra):
+    # Flask logs the traceback itself; this adds the tagged line and alert.
+    request_id = request.headers.get('Fly-Request-Id', '-')
+    log_failure('unhandled', f"{request.method} {request.path} "
+                             f"({type(exception).__name__}: {exception}) request={request_id}")
+
+
+got_request_exception.connect(_log_unhandled, app)
 app.secret_key = os.environ['SECRET_KEY']
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -684,7 +786,7 @@ def _booking_email_parts(customer_name, d):
         try:
             manage_link = manage_url(d['reservation_id'], d['date'], d.get('email'))
         except Exception:
-            logger.exception("Could not build manage link; sending email without it")
+            log_failure('manage-link', "could not build manage link; sending email without it", exc_info=True)
 
     return {
         'formatted_date': formatted_date,
@@ -878,7 +980,7 @@ def send_confirmation_email(customer_email, customer_name, reservation_details,
                             previous=None, kind=None):
     """kind='cancelled' -> cancellation, previous set -> change, else confirmation."""
     try:
-        logger.info(f"Sending email to {customer_email}")
+        logger.info(f"Sending email to {mask_email(customer_email)}")
         if kind == 'cancelled':
             subject, html_body, text_body = build_cancellation_email(
                 customer_name, reservation_details)
@@ -903,25 +1005,25 @@ def send_confirmation_email(customer_email, customer_name, reservation_details,
             timeout=10
         )
         if response.status_code != 200:
-            logger.error(f"Resend error {response.status_code}: {response.text}")
+            log_failure('email', f"Resend {response.status_code} for {mask_email(customer_email)}: {response.text}")
             return False
 
-        logger.info(f"Confirmation email sent to {customer_email}")
+        logger.info(f"Email sent to {mask_email(customer_email)}")
         return True
 
     except Exception:
-        logger.exception(f"Error sending email to {customer_email}")
+        log_failure('email', f"could not send to {mask_email(customer_email)}", exc_info=True)
         return False
 
 
 def send_email_async(email, name, reservation_data, previous=None, kind=None):
     try:
         if send_confirmation_email(email, name, reservation_data, previous, kind):
-            logger.info(f"Background email sent to {email}")
+            logger.info(f"Background email sent to {mask_email(email)}")
         else:
-            logger.warning(f"Background email failed for {email}")
+            logger.warning(f"Background email failed for {mask_email(email)}")
     except Exception as e:
-        logger.error(f"Background email error: {e}")
+        log_failure('email', f"background send crashed for {mask_email(email)}", exc_info=True)
 
 
 DATE_TAB_HEADERS = ["Name", "Time", "People", "Phone", "Email", "Date",
@@ -950,7 +1052,8 @@ def create_date_sheet(name, phone, email, people, date, time, dish_type, notes, 
         date_sheet.append_row([name, time, people, phone, email, date,
                                 dish_type, notes, "Pending", reservation_id or ""])
     except Exception as e:
-        logger.error(f"Error creating/updating date sheet: {e}")
+        log_failure('sheets', f"booking {reservation_id} saved to Master Data but not to the {date} tab "
+                             f"(no day-of SMS until fixed): {e}", exc_info=True)
 
 
 def send_sms(to_number, message_text, custom_ref=None):
@@ -964,7 +1067,7 @@ def send_sms(to_number, message_text, custom_ref=None):
     if custom_ref:
         payload["messages"][0]["custom_ref"] = custom_ref
 
-    logger.info("SMS payload: %s", json.dumps(payload))
+    logger.info(f"Sending SMS to {mask_phone(to_number)} ({custom_ref or 'no ref'})")
 
     try:
         response = requests.post(
@@ -974,13 +1077,13 @@ def send_sms(to_number, message_text, custom_ref=None):
             timeout=10
         )
         if response.status_code != 200:
-            logger.error(f"SMS API error {response.status_code}: {response.text}")
+            log_failure('sms', f"SMS API {response.status_code} for {mask_phone(to_number)}: {response.text}")
             return None
         response_data = response.json()
-        logger.info("SMS API response: %s", json.dumps(response_data))
+        logger.info(f"SMS accepted for {mask_phone(to_number)}")
         return response_data
     except Exception as e:
-        logger.error(f"Error sending SMS: {e}")
+        log_failure('sms', f"could not send to {mask_phone(to_number)}: {e}", exc_info=True)
         return None
 
 
@@ -1056,6 +1159,7 @@ def send_sms_on_date(target_date, message_type="day_of"):
         return summary
 
     except Exception as e:
+        log_failure('sms-job', f"{message_type} run for {target_date} crashed: {e}", exc_info=True)
         return f"Error sending SMS for {target_date}: {e}"
 
 # --- Cron ---
@@ -1288,7 +1392,7 @@ def reservation_success():
                                              reservation_data['date'],
                                              reservation_data.get('email'))
         except Exception:
-            logger.exception("Could not build manage link for the success page")
+            log_failure('manage-link', "could not build manage link for the success page", exc_info=True)
 
     return render_template(
         'reservation_success.html',
@@ -1348,7 +1452,7 @@ def master_date_for(want_id, want_email):
                 continue
             return str(row[MASTER_DATE]).strip().replace('/', '-')
     except Exception:
-        logger.exception("Manage link: Master Data lookup failed")
+        log_failure('sheets', "manage link: Master Data lookup failed", exc_info=True)
     return None
 
 
@@ -1410,7 +1514,7 @@ def update_master_booking(want_id, want_email, new_date, new_time,
             master.batch_update(updates)
             return True
     except Exception:
-        logger.exception("Manage link: Master Data update failed")
+        log_failure('sheets', "manage link: Master Data update failed", exc_info=True)
     return False
 
 
@@ -1498,7 +1602,7 @@ def load_managed_booking(token):
     try:
         date_sheet, row_number, row = find_booking(payload)
     except Exception:
-        logger.exception("Manage link: sheet lookup failed")
+        log_failure('sheets', "manage link: sheet lookup failed", exc_info=True)
         return None, None, None, None, render_manage('error', status_code=503)
 
     if row is None:
@@ -1550,7 +1654,7 @@ def manage_booking_cancel(token):
             {'range': f'L{row_number}', 'values': [[f'Cancelled by customer {stamp}']]},
         ])
     except Exception:
-        logger.exception("Manage link: cancel write failed")
+        log_failure('booking-change', f"customer cancel of {booking['reservation_id']} failed to save", exc_info=True)
         return render_active(token, booking, status_code=503,
                              notice=('error', "Sorry, something went wrong. "
                                               f"Please call us on {RESTAURANT_PHONE}.",
@@ -1663,7 +1767,7 @@ def manage_booking_reschedule(token):
                 updates.append({'range': f'I{row_number}', 'values': [['Pending']]})
             date_sheet.batch_update(updates)
     except Exception:
-        logger.exception("Manage link: reschedule write failed")
+        log_failure('booking-change', "customer reschedule failed to save", exc_info=True)
         return reject('Sorry, something went wrong. '
                       f'Please call us on {RESTAURANT_PHONE}.',
                       f'抱歉，出了一点问题，请致电我们 {RESTAURANT_PHONE}。')
@@ -1869,7 +1973,7 @@ def get_upcoming():
     try:
         days = upcoming_days(force=request.args.get('refresh') == '1')
     except Exception:
-        logger.exception("Staff dashboard: could not build the upcoming view")
+        log_failure('staff', "dashboard could not build the upcoming view", exc_info=True)
         return jsonify({'success': False, 'days': [],
                         'message': 'Could not load upcoming bookings'}), 503
 
@@ -2185,7 +2289,7 @@ def update_booking():
         })
 
     except Exception:
-        logger.exception("Staff edit: write failed")
+        log_failure('staff', "staff edit failed to save", exc_info=True)
         return jsonify({'success': False,
                         'message': 'Could not save that change. Please try again.'}), 503
 
@@ -2256,7 +2360,7 @@ def receive_sms():
         success = process_sms_reply_smart(data.get('sender'), data.get('message'), data.get('received_at'))
         return jsonify({"status": "success" if success else "warning"}), 200
     except Exception as e:
-        logger.error(f"Error processing webhook: {e}")
+        log_failure('sms-reply', f"webhook crashed: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -2329,7 +2433,7 @@ def process_sms_reply_smart(phone_number, message, received_at):
                 else:
                     status = f"Reply needs review: {message}"
                     method = "SMS"
-                    logger.warning(f"SMS reply needs manual review: {message}")
+                    logger.warning(f"SMS reply for {name} needs manual review (text is in the sheet)")
 
                 date_sheet.batch_update([
                     {'range': f'I{row_number}', 'values': [[status]]},
@@ -2342,13 +2446,13 @@ def process_sms_reply_smart(phone_number, message, received_at):
         except gspread.WorksheetNotFound:
             logger.warning(f"Sheet not found: {parsed_date}")
         except Exception as e:
-            logger.error(f"Error checking sheet {parsed_date}: {e}")
+            log_failure('sms-reply', f"could not check the {parsed_date} tab: {e}", exc_info=True)
 
         log_unknown_reply(phone_number, message, received_at)
         return False
 
     except Exception:
-        logger.exception("Error processing SMS reply")
+        log_failure('sms-reply', "could not process a reply", exc_info=True)
         return False
 
 
@@ -2369,7 +2473,7 @@ def log_unknown_reply(phone_number, message, received_at):
         ])
         logger.info("Logged unknown SMS reply")
     except Exception as e:
-        logger.error(f"Error logging unknown reply: {e}")
+        log_failure('sms-reply', f"could not save an unmatched reply for review: {e}", exc_info=True)
 
 # --- Health ---
 
